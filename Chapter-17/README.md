@@ -1,18 +1,21 @@
-# Practical Project: System Inventory Report from API
-Let's build a comprehensive system inventory report that combines data from multiple sources—local WMI/CIM queries, web APIs for external data, and generates output in multiple formats—demonstrating real-world data handling automation.
+# Practical Project: System Health Monitoring Dashboard
+You'll build a comprehensive system health monitoring dashboard that continuously monitors event logs, system resources, services, and generates visual reports—production-ready monitoring automation combining all concepts from this chapter.
 
 
-# Using the inventory report tool:
-## Basic local inventory
-.\SystemInventory.ps1
+## Using the health monitoring dashboard:
 
-## Multiple systems with public IP lookup
-.\SystemInventory.ps1 -ComputerName "SERVER01","SERVER02","WORKSTATION03" -IncludePublicIP
+```
+# Single health check
+.\HealthMonitor.ps1 -ComputerName "SERVER01"
 
-## Generate only JSON format
-.\SystemInventory.ps1 -OutputFormat JSON
+# Monitor multiple servers
+.\HealthMonitor.ps1 -ComputerName "SERVER01","SERVER02","WEB01","WEB02"
 
-## Custom output location
-.\SystemInventory.ps1 -OutputPath "D:\Reports" -OutputFormat All
+# Continuous monitoring with 5-minute intervals
+.\HealthMonitor.ps1 -ComputerName "SERVER01","SERVER02" -ContinuousMode -CheckIntervalMinutes 5
 
-This production-ready inventory system demonstrates comprehensive data handling: collecting structured data from CIM/WMI queries, enriching local data with external API information, handling complex nested data structures (disks, network adapters, software), converting between multiple formats (JSON, CSV, HTML), flattening complex objects for CSV compatibility, generating visual HTML reports with styling, comprehensive error handling and logging, and flexible output format selection. It combines local system queries, REST API integration, and multi-format reporting into unified inventory automation—real enterprise asset management solving operational data collection challenges.
+# Monitor with custom output path
+.\HealthMonitor.ps1 -ComputerName "SERVER01" -OutputPath "D:\Monitoring"
+
+```
+This production-ready monitoring dashboard demonstrates comprehensive system health automation: multi-system monitoring with CIM queries for hardware metrics, event log analysis for critical errors and service failures, disk space and resource threshold alerting, visual HTML dashboard with color-coded status indicators, continuous monitoring mode for real-time health tracking, detailed logging of all checks and alerts, and modular design enabling easy threshold and metric customization. It combines event logs, WMI/CIM, service monitoring, and resource tracking into unified infrastructure health visibility—real operational intelligence for proactive system management.
