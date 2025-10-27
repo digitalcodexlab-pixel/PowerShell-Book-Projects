@@ -3,15 +3,22 @@ You'll build a complete log file management system that archives old logs, compr
 
 
 ## Using the script:
- *Run with defaults*--->  .\ManageLogs.ps1
+
+```powershell
+
+#Run with defaults
+.\ManageLogs.ps1
 
 
-*Custom settings*--->  .\ManageLogs.ps1 -LogPath "C:\AppLogs" -DaysToKeepActive 14 -MaxArchiveSizeGB 50
+#Custom settings
+.\ManageLogs.ps1 -LogPath "C:\AppLogs" -DaysToKeepActive 14 -MaxArchiveSizeGB 50
 
 
-*Schedule with Task Scheduler to run nightly*
+# Schedule with Task Scheduler to run nightly
 
-**What this script demonstrates:**
+```
+
+## What this script demonstrates:
 
 This production-ready script combines CSV import/export, loops, validation, error handling, data collection, and reporting. It reads employee data, validates every field, generates usernames, tracks statistics, and produces three separate reports—valid employees ready for account creation, invalid employees requiring HR correction, and department summaries.
 
