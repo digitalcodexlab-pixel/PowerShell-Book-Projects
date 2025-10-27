@@ -1,48 +1,91 @@
-<#
-.SYNOPSIS
-    Automated Log File Management System
-.DESCRIPTION
-    Manages log files by archiving old logs, compressing archives,
-    cleaning up space, and generating reports
-.PARAMETER LogPath
-    Path containing log files to manage
-.PARAMETER ArchivePath
-    Path where archived logs are stored
-.PARAMETER DaysToKeepActive
-    Days to keep logs in active directory before archiving
-.PARAMETER DaysToKeepArchive
-    Days to keep archived logs before deletion
-.PARAMETER MaxArchiveSizeGB
-    Maximum archive folder size in GB
-#>
+#We'll build a complete, practical module you'll actually use—a collection of system administration utilities with proper organization, documentation, and deployment.
 
-param(
-    [string]$LogPath = "C:\Logs",
-    [string]$ArchivePath = "C:\Archive\Logs",
-    [int]$DaysToKeepActive = 30,
-    [int]$DaysToKeepArchive = 365,
-    [double]$MaxArchiveSizeGB = 100
-)
+#Create the module structure:
+$moduleName = "AdminTools"
+$modulePath = "$env:USERPROFILE\Documents\PowerShell\Modules\$moduleName"
 
-# Create log for this script's operations
-$scriptLogPath = "C:\Logs\LogManagement"
-$scriptLogFile = Join-Path $scriptLogPath "LogManagement-$(Get-Date -Format 'yyyy-MM-dd').log"
+# Create module directory
+New-Item -Path $modulePath -ItemType Directory -Force
 
-# Ensure script log directory exists
-if (-not (Test-Path $scriptLogPath)) {
-    New-Item -Path $scriptLogPath -ItemType Directory -Force | Out-Null
+# Create module file
+$moduleFile = Join-Path $modulePath "$moduleName.psm1"
+
+#Add useful functions to AdminTools.psm1:
+function Get-QuickSystemInfo {
+    <#
+    .SYNOPSIS
+        Gets essential system information quickly
+    .EXAMPLE
+        Get-QuickSystemInfo
+    #>
+    
+    [PSCustomObject]@{
+        ComputerName = $env:COMPUTERNAME
+        OS = (Get-CimInstance Win32_OperatingSystem).Caption
+        OSVersion = (Get-CimInstance Win32_OperatingSystem).Version
+        MemoryGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+        Uptime = (Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+        LastBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+    }
 }
 
-function Write-ScriptLog {
+function Test-PortOpen {
+    <#
+    .SYNOPSIS
+        Tests if a network port is open
+    .EXAMPLE
+        Test-PortOpen -ComputerName "SERVER01" -Port 80
+    #>
+    
     param(
+        [Parameter(Mandatory=$true)]
+        [string]$ComputerName,
+        
+        [Parameter(Mandatory=$true)]
+        [int]$Port,
+        
+        [int]$TimeoutSeconds = 2
+    )
+    
+    try {
+        $tcpClient = New-Object System.Net.Sockets.TcpClient
+        $result = $tcpClient.BeginConnect($ComputerName, $Port, $null, $null)
+        $success = $result.AsyncWaitHandle.WaitOne($TimeoutSeconds * 1000)
+        
+        if ($success) {
+            $tcpClient.EndConnect($result)
+            $tcpClient.Close()
+            return $true
+        }
+        return $false
+    }
+    catch {
+        return $false
+    }
+}
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes timestamped log entries
+    .EXAMPLE
+        Write-Log "Operation completed" -Level INFO
+    #>
+    
+    param(
+        [Parameter(Mandatory=$true)]
         [string]$Message,
-        [string]$Level = "INFO"
+        
+        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+        [string]$Level = "INFO",
+        
+        [string]$LogFile = "$env:TEMP\AdminTools.log"
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logEntry = "$timestamp [$Level] $Message"
     
-    Add-Content -Path $scriptLogFile -Value $logEntry
+    Add-Content -Path $LogFile -Value $logEntry
     
     $color = switch($Level) {
         "ERROR" { "Red" }
@@ -54,211 +97,59 @@ function Write-ScriptLog {
     Write-Host $logEntry -ForegroundColor $color
 }
 
-# Statistics tracking
-$stats = @{
-    FilesArchived = 0
-    FilesCompressed = 0
-    FilesDeleted = 0
-    SpaceFreedMB = 0
-    Errors = 0
-}
+# Export functions
+Export-ModuleMember -Function Get-QuickSystemInfo, Test-PortOpen, Write-Log
 
-Write-ScriptLog "=== LOG FILE MANAGEMENT STARTED ===" "INFO"
-Write-ScriptLog "Active Logs Path: $LogPath"
-Write-ScriptLog "Archive Path: $ArchivePath"
-Write-ScriptLog "Days to keep active: $DaysToKeepActive"
-Write-ScriptLog "Days to keep archive: $DaysToKeepArchive"
+#Create the manifest:
+$manifestPath = Join-Path $modulePath "$moduleName.psd1"
 
-# Verify source path exists
-if (-not (Test-Path $LogPath)) {
-    Write-ScriptLog "Log path not found: $LogPath" "ERROR"
-    exit 1
-}
+New-ModuleManifest -Path $manifestPath `
+    -RootModule "$moduleName.psm1" `
+    -ModuleVersion "1.0.0" `
+    -Author $env:USERNAME `
+    -Description "Personal system administration utility functions" `
+    -PowerShellVersion "5.1" `
+    -FunctionsToExport @("Get-QuickSystemInfo", "Test-PortOpen", "Write-Log") `
+    -Tags @("Administration", "Utilities", "Tools")
 
-# Create archive path if needed
-if (-not (Test-Path $ArchivePath)) {
-    New-Item -Path $ArchivePath -ItemType Directory -Force | Out-Null
-    Write-ScriptLog "Created archive directory: $ArchivePath" "INFO"
-}
+#Test your module:
+# Import it
+Import-Module AdminTools
 
-#region Archive Old Logs
+# Test functions
+Get-QuickSystemInfo
+Test-PortOpen -ComputerName "google.com" -Port 80
+Write-Log "Testing my new module" -Level SUCCESS
 
-Write-ScriptLog "`n=== ARCHIVING OLD LOGS ===" "INFO"
+# Verify
+Get-Command -Module AdminTools
 
-$archiveCutoff = (Get-Date).AddDays(-$DaysToKeepActive)
-$logsToArchive = Get-ChildItem -Path $LogPath -Filter "*.log" -File | 
-    Where-Object LastWriteTime -lt $archiveCutoff
-
-Write-ScriptLog "Found $($logsToArchive.Count) logs older than $DaysToKeepActive days"
-
-foreach ($log in $logsToArchive) {
-    try {
-        # Create year-month subfolder in archive
-        $yearMonth = $log.LastWriteTime.ToString("yyyy-MM")
-        $archiveSubPath = Join-Path $ArchivePath $yearMonth
-        
-        if (-not (Test-Path $archiveSubPath)) {
-            New-Item -Path $archiveSubPath -ItemType Directory -Force | Out-Null
-        }
-        
-        # Move log to archive
-        $destination = Join-Path $archiveSubPath $log.Name
-        Move-Item -Path $log.FullName -Destination $destination -Force -ErrorAction Stop
-        
-        Write-ScriptLog "Archived: $($log.Name) to $yearMonth" "SUCCESS"
-        $stats.FilesArchived++
-    }
-    catch {
-        Write-ScriptLog "Failed to archive $($log.Name): $($_.Exception.Message)" "ERROR"
-        $stats.Errors++
-    }
-}
-
-#endregion
-
-#region Compress Archives
-
-Write-ScriptLog "`n=== COMPRESSING ARCHIVE FOLDERS ===" "INFO"
-
-# Get month folders in archive
-$archiveFolders = Get-ChildItem -Path $ArchivePath -Directory
-
-foreach ($folder in $archiveFolders) {
-    try {
-        $zipFileName = "$($folder.Name).zip"
-        $zipPath = Join-Path $ArchivePath $zipFileName
-        
-        # Skip if already compressed
-        if (Test-Path $zipPath) {
-            Write-ScriptLog "Already compressed: $($folder.Name)" "INFO"
-            continue
-        }
-        
-        # Compress folder contents
-        Write-ScriptLog "Compressing $($folder.Name)..." "INFO"
-        Compress-Archive -Path "$($folder.FullName)\*" -DestinationPath $zipPath -CompressionLevel Optimal -ErrorAction Stop
-        
-        # Calculate space saved
-        $originalSize = (Get-ChildItem -Path $folder.FullName -Recurse -File | 
-            Measure-Object Length -Sum).Sum
-        $compressedSize = (Get-Item $zipPath).Length
-        $spaceSaved = $originalSize - $compressedSize
-        $spaceSavedMB = [math]::Round($spaceSaved / 1MB, 2)
-        
-        # Delete original folder after successful compression
-        Remove-Item -Path $folder.FullName -Recurse -Force -ErrorAction Stop
-        
-        Write-ScriptLog "Compressed $($folder.Name) (saved $spaceSavedMB MB)" "SUCCESS"
-        $stats.FilesCompressed++
-        $stats.SpaceFreedMB += $spaceSavedMB
-    }
-    catch {
-        Write-ScriptLog "Failed to compress $($folder.Name): $($_.Exception.Message)" "ERROR"
-        $stats.Errors++
-    }
-}
-
-#endregion
-
-#region Delete Old Archives
-
-Write-ScriptLog "`n=== DELETING OLD ARCHIVES ===" "INFO"
-
-$deleteCutoff = (Get-Date).AddDays(-$DaysToKeepArchive)
-$oldArchives = Get-ChildItem -Path $ArchivePath -Filter "*.zip" -File | 
-    Where-Object LastWriteTime -lt $deleteCutoff
-
-Write-ScriptLog "Found $($oldArchives.Count) archives older than $DaysToKeepArchive days"
-
-foreach ($archive in $oldArchives) {
-    try {
-        $sizeMB = [math]::Round($archive.Length / 1MB, 2)
-        Remove-Item -Path $archive.FullName -Force -ErrorAction Stop
-        
-        Write-ScriptLog "Deleted old archive: $($archive.Name) ($sizeMB MB)" "WARNING"
-        $stats.FilesDeleted++
-        $stats.SpaceFreedMB += $sizeMB
-    }
-    catch {
-        Write-ScriptLog "Failed to delete $($archive.Name): $($_.Exception.Message)" "ERROR"
-        $stats.Errors++
-    }
-}
-
-#endregion
-
-#region Check Archive Size Limits
-
-Write-ScriptLog "`n=== CHECKING ARCHIVE SIZE LIMITS ===" "INFO"
-
-$currentSize = (Get-ChildItem -Path $ArchivePath -Recurse -File | 
-    Measure-Object Length -Sum).Sum
-$currentSizeGB = [math]::Round($currentSize / 1GB, 2)
-
-Write-ScriptLog "Current archive size: $currentSizeGB GB (limit: $MaxArchiveSizeGB GB)"
-
-if ($currentSizeGB -gt $MaxArchiveSizeGB) {
-    Write-ScriptLog "Archive size exceeds limit, removing oldest archives..." "WARNING"
-    
-    $archives = Get-ChildItem -Path $ArchivePath -Filter "*.zip" -File | 
-        Sort-Object LastWriteTime
-    
-    foreach ($archive in $archives) {
-        if ($currentSizeGB -le $MaxArchiveSizeGB) { break }
-        
-        $archiveSizeGB = $archive.Length / 1GB
-        $archiveSizeMB = [math]::Round($archive.Length / 1MB, 2)
-        
-        Remove-Item -Path $archive.FullName -Force
-        Write-ScriptLog "Removed oldest archive: $($archive.Name) ($archiveSizeMB MB)" "WARNING"
-        
-        $currentSizeGB -= $archiveSizeGB
-        $stats.FilesDeleted++
-        $stats.SpaceFreedMB += $archiveSizeMB
-    }
-    
-    Write-ScriptLog "Archive size now: $currentSizeGB GB" "SUCCESS"
-}
-
-#endregion
-
-#region Generate Summary Report
-
-Write-ScriptLog "`n=== MANAGEMENT SUMMARY ===" "SUCCESS"
-Write-ScriptLog "Files Archived: $($stats.FilesArchived)"
-Write-ScriptLog "Folders Compressed: $($stats.FilesCompressed)"
-Write-ScriptLog "Archives Deleted: $($stats.FilesDeleted)"
-Write-ScriptLog "Space Freed: $($stats.SpaceFreedMB) MB"
-Write-ScriptLog "Errors: $($stats.Errors)"
-
-# Create summary report file
-$reportPath = Join-Path $scriptLogPath "Summary-$(Get-Date -Format 'yyyy-MM-dd').txt"
+#Create README documentation:
+$readmePath = Join-Path $modulePath "README.md"
 @"
-LOG MANAGEMENT SUMMARY
-Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+# AdminTools Module
 
-STATISTICS
-----------
-Files Archived: $($stats.FilesArchived)
-Folders Compressed: $($stats.FilesCompressed)
-Archives Deleted: $($stats.FilesDeleted)
-Space Freed: $($stats.SpaceFreedMB) MB
-Errors Encountered: $($stats.Errors)
+Personal system administration utilities.
 
-PATHS
------
-Active Logs: $LogPath
-Archive Location: $ArchivePath
-Current Archive Size: $currentSizeGB GB
+## Functions
 
-POLICIES
---------
-Days to Keep Active: $DaysToKeepActive
-Days to Keep Archive: $DaysToKeepArchive
-Max Archive Size: $MaxArchiveSizeGB GB
-"@ | Out-File -Path $reportPath
+- **Get-QuickSystemInfo**: Returns essential system information
+- **Test-PortOpen**: Tests network port connectivity  
+- **Write-Log**: Creates timestamped log entries
 
-Write-ScriptLog "Summary report saved: $reportPath"
-Write-ScriptLog "=== LOG FILE MANAGEMENT COMPLETED ===" "SUCCESS"
+## Installation
 
-#endregion
+Copy to: `$env:USERPROFILE\Documents\PowerShell\Modules\AdminTools`
+
+## Usage
+
+``````powershell
+Import-Module AdminTools
+Get-QuickSystemInfo
+"@ | Out-File $readmePath
+
+<#
+You've built a professional module with documentation, versioning, and useful functions. 
+Add to it over time—when you write a useful function, add it here instead of leaving it scattered across scripts. 
+This module becomes your personal toolkit, growing with your experience.
+#>
