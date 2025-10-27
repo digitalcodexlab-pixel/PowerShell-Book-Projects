@@ -1,0 +1,21 @@
+# Configuration file (Config/settings.json):
+{
+    "LogPath": "C:\\AdminToolkit\\Logs",
+    "ReportPath": "C:\\AdminToolkit\\Reports",
+    "EmailSettings": {
+        "SmtpServer": "smtp.company.com",
+        "From": "admintoolkit@company.com",
+        "To": ["admin@company.com"]
+    },
+    "HealthThresholds": {
+        "DiskSpaceWarning": 80,
+        "DiskSpaceCritical": 90,
+        "MemoryWarning": 85,
+        "MemoryCritical": 95
+    },
+    "TempCleanupPaths": [
+        "C:\\Windows\\Temp",
+        "C:\\Users\\*\\AppData\\Local\\Temp"
+    ],
+    "CleanupRetentionDays": 7
+}
