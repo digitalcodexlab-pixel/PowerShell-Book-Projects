@@ -5,6 +5,8 @@ Building a complete admin toolkit demonstrates integrating everything learned—
 **Project overview:** The Admin Toolkit provides interactive menu for common system administration tasks: checking disk space, monitoring services, viewing event logs, generating health reports, cleaning temporary files, and emailing reports. The toolkit demonstrates professional script architecture, comprehensive error handling, logging, configuration management, and user-friendly interface.
 
 # Project structure:
+
+```
 AdminToolkit/
 ├── AdminToolkit.ps1           # Main menu interface
 ├── Config/
@@ -16,3 +18,4 @@ AdminToolkit/
 ├── Logs/                      # Log files (created at runtime)
 ├── Reports/                   # Generated reports (created at runtime)
 └── README.md                  # Documentation
+```
