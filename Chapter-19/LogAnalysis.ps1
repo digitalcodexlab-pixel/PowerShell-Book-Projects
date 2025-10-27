@@ -1,70 +1,54 @@
 <#
 .SYNOPSIS
-    Advanced Email Notification System with Monitoring
+    Advanced Log Analysis and Reporting Tool
 .DESCRIPTION
-    Monitors system health, generates formatted email notifications,
-    supports templates, attachments, and multiple recipient groups.
-    Uses .NET classes for robust email delivery.
-.PARAMETER NotificationType
-    Type of notification to send (Alert, Report, Summary, Custom)
-.PARAMETER Recipients
-    Email addresses to receive notifications
-.PARAMETER SmtpServer
-    SMTP server address
-.PARAMETER SmtpPort
-    SMTP server port (default 587)
-.PARAMETER UseSSL
-    Enable SSL for SMTP connection
-.PARAMETER CredentialPath
-    Path to encrypted credential file
-.PARAMETER IncludeSystemReport
-    Include detailed system report attachment
-.PARAMETER Threshold
-    Alert threshold for system metrics
+    Parses application and system logs using regex patterns,
+    extracts structured data, identifies errors and security events,
+    detects anomalies, and generates comprehensive reports
+.PARAMETER LogPath
+    Path to log file or directory containing logs
+.PARAMETER LogType
+    Type of log format (Application, IIS, Apache, Security, Custom)
+.PARAMETER StartDate
+    Filter logs from this date forward
+.PARAMETER EndDate
+    Filter logs up to this date
+.PARAMETER OutputPath
+    Directory for generated reports
+.PARAMETER IncludeStatistics
+    Generate statistical analysis of log data
 .NOTES
-    REQUIRES: SMTP server access
-    REQUIRES: .NET Framework 4.5+
-    REQUIRES: Credentials for authenticated SMTP
+    REQUIRES: Read access to log files
+    REQUIRES: Write access to output directory
 #>
 
 param(
-    [ValidateSet("Alert", "Report", "Summary", "Custom")]
-    [string]$NotificationType = "Report",
-    
     [Parameter(Mandatory=$true)]
-    [string[]]$Recipients,
+    [string]$LogPath,
     
-    [Parameter(Mandatory=$true)]
-    [string]$SmtpServer,
+    [ValidateSet("Application", "IIS", "Apache", "Security", "Custom")]
+    [string]$LogType = "Application",
     
-    [int]$SmtpPort = 587,
+    [datetime]$StartDate,
+    [datetime]$EndDate = (Get-Date),
     
-    [switch]$UseSSL = $true,
+    [string]$OutputPath = "C:\Reports\LogAnalysis",
     
-    [string]$CredentialPath,
-    
-    [switch]$IncludeSystemReport,
-    
-    [hashtable]$Threshold = @{
-        CPUPercent = 80
-        MemoryPercent = 85
-        DiskPercent = 90
-    }
+    [switch]$IncludeStatistics
 )
 
-$script:LogPath = "C:\Logs\EmailNotifications"
-if (-not (Test-Path $script:LogPath)) {
-    [System.IO.Directory]::CreateDirectory($script:LogPath) | Out-Null
+# Ensure output directory exists
+if (-not (Test-Path $OutputPath)) {
+    New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
 }
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
-$logFile = [System.IO.Path]::Combine($script:LogPath, "EmailLog-$timestamp.log")
+$reportLog = Join-Path $OutputPath "Analysis-$timestamp.log"
 
-function Write-NotificationLog {
+function Write-AnalysisLog {
     param([string]$Message, [string]$Level = "INFO")
     
-    $logEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [$Level] $Message"
-    [System.IO.File]::AppendAllText($logFile, "$logEntry`n")
+    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [$Level] $Message" | Add-Content -Path $reportLog
     
     $color = @{
         "ERROR" = "Red"
@@ -76,390 +60,384 @@ function Write-NotificationLog {
     Write-Host $Message -ForegroundColor $color
 }
 
-function Get-SystemHealthData {
-    Write-NotificationLog "Collecting system health data..." "INFO"
-    
-    try {
-        # Collect system information using .NET and CIM
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem
-        $cs = Get-CimInstance -ClassName Win32_ComputerSystem
-        $cpu = Get-CimInstance -ClassName Win32_Processor
-        $disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3"
-        
-        # Calculate metrics
-        $memoryUsedPercent = [math]::Round((1 - ($os.FreePhysicalMemory / $os.TotalVisibleMemorySize)) * 100, 1)
-        $cpuLoad = $cpu.LoadPercentage
-        
-        # Disk information
-        $diskInfo = @()
-        foreach ($disk in $disks) {
-            $percentFree = [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 1)
-            $percentUsed = 100 - $percentFree
-            
-            $diskInfo += [PSCustomObject]@{
-                Drive = $disk.DeviceID
-                TotalGB = [math]::Round($disk.Size / 1GB, 2)
-                FreeGB = [math]::Round($disk.FreeSpace / 1GB, 2)
-                PercentUsed = $percentUsed
-                Status = if ($percentUsed -gt $Threshold.DiskPercent) { "Critical" } else { "OK" }
-            }
-        }
-        
-        # Determine overall health status
-        $alerts = @()
-        $status = "Healthy"
-        
-        if ($memoryUsedPercent -gt $Threshold.MemoryPercent) {
-            $alerts += "Memory usage critical: $memoryUsedPercent%"
-            $status = "Warning"
-        }
-        
-        if ($cpuLoad -gt $Threshold.CPUPercent) {
-            $alerts += "CPU load high: $cpuLoad%"
-            $status = "Warning"
-        }
-        
-        $criticalDisks = $diskInfo | Where-Object Status -eq "Critical"
-        if ($criticalDisks) {
-            $alerts += "Disk space critical on: $(($criticalDisks.Drive) -join ', ')"
-            $status = "Critical"
-        }
-        
-        $healthData = [PSCustomObject]@{
-            ComputerName = $cs.Name
-            CollectionTime = Get-Date
-            OS = $os.Caption
-            OSVersion = $os.Version
-            Uptime = [math]::Round(((Get-Date) - $os.LastBootUpTime).TotalHours, 1)
-            TotalMemoryGB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
-            MemoryUsedPercent = $memoryUsedPercent
-            CPULoad = $cpuLoad
-            Disks = $diskInfo
-            Status = $status
-            Alerts = $alerts
-        }
-        
-        Write-NotificationLog "Health data collected: Status=$status" "SUCCESS"
-        return $healthData
+# Define regex patterns for different log types
+$LogPatterns = @{
+    Application = @{
+        Pattern = '(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(?<level>INFO|WARNING|ERROR|CRITICAL|DEBUG)\s*:\s*(?<message>.+)'
+        Fields = @('timestamp', 'level', 'message')
     }
-    catch {
-        Write-NotificationLog "Failed to collect health data: $($_.Exception.Message)" "ERROR"
-        return $null
+    IIS = @{
+        Pattern = '(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(?<method>\w+)\s+(?<uri>[^\s]+)\s+-\s+(?<port>\d+)\s+-\s+(?<ip>[\d.]+)\s+.*?\s+(?<status>\d{3})\s+\d+\s+(?<timetaken>\d+)'
+        Fields = @('timestamp', 'method', 'uri', 'ip', 'status', 'timetaken')
+    }
+    Apache = @{
+        Pattern = '(?<ip>[\d.]+)\s+-\s+-\s+\[(?<timestamp>[^\]]+)\]\s+"(?<method>\w+)\s+(?<uri>[^\s]+)\s+[^"]+"\s+(?<status>\d{3})\s+(?<bytes>\d+)'
+        Fields = @('ip', 'timestamp', 'method', 'uri', 'status', 'bytes')
+    }
+    Security = @{
+        Pattern = '(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(?<eventtype>Logon|Logoff|Failed)\s+.*?user\s+(?<user>\w+)\s+.*?from\s+(?<ip>[\d.]+)'
+        Fields = @('timestamp', 'eventtype', 'user', 'ip')
+    }
+    Custom = @{
+        Pattern = '\[(?<timestamp>[^\]]+)\]\s+(?<level>\w+)\s+\[(?<component>[^\]]+)\]\s+(?<message>.+)'
+        Fields = @('timestamp', 'level', 'component', 'message')
     }
 }
 
-function New-HTMLEmailBody {
+# Additional extraction patterns
+$ExtractionPatterns = @{
+    IPAddress = '\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
+    Email = '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    ErrorCode = 'ERR\d{3,5}|0x[0-9A-Fa-f]{8}|\b[1-5]\d{2}\b'
+    URL = 'https?://[^\s<>"]+'
+    FilePath = '[A-Z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*'
+}
+
+function Get-LogEntries {
     param(
-        [PSCustomObject]$HealthData,
-        [string]$NotificationType
+        [string]$Path,
+        [hashtable]$Pattern
     )
     
-    $statusColor = switch ($HealthData.Status) {
-        "Healthy" { "#27ae60" }
-        "Warning" { "#f39c12" }
-        "Critical" { "#e74c3c" }
-        default { "#95a5a6" }
+    Write-AnalysisLog "Reading log file: $Path" "INFO"
+    
+    if (-not (Test-Path $Path)) {
+        Write-AnalysisLog "Log file not found: $Path" "ERROR"
+        return @()
     }
     
-    $diskRows = ($HealthData.Disks | ForEach-Object {
-        $rowColor = if ($_.Status -eq "Critical") { "background-color: #fadbd8;" } else { "" }
-        "<tr style='$rowColor'>
-            <td>$($_.Drive)</td>
-            <td>$($_.TotalGB) GB</td>
-            <td>$($_.FreeGB) GB</td>
-            <td>$($_.PercentUsed)%</td>
-            <td style='color: $(if($_.Status -eq "Critical"){"#e74c3c"}else{"#27ae60"})'>$($_.Status)</td>
-        </tr>"
-    }) -join "`n"
+    $logContent = Get-Content -Path $Path -ErrorAction SilentlyContinue
     
-    $alertSection = if ($HealthData.Alerts.Count -gt 0) {
+    if (-not $logContent) {
+        Write-AnalysisLog "Log file is empty or unreadable" "WARNING"
+        return @()
+    }
+    
+    Write-AnalysisLog "Parsing $($logContent.Count) log lines..." "INFO"
+    
+    $entries = @()
+    $parseErrors = 0
+    
+    foreach ($line in $logContent) {
+        if ($line -match $Pattern.Pattern) {
+            $entry = @{
+                RawLine = $line
+            }
+            
+            foreach ($field in $Pattern.Fields) {
+                $entry[$field] = $Matches[$field]
+            }
+            
+            # Parse timestamp if present
+            if ($entry.ContainsKey('timestamp')) {
+                try {
+                    $entry['TimestampParsed'] = [datetime]::Parse($entry['timestamp'])
+                }
+                catch {
+                    $entry['TimestampParsed'] = $null
+                }
+            }
+            
+            $entries += [PSCustomObject]$entry
+        }
+        else {
+            $parseErrors++
+        }
+    }
+    
+    Write-AnalysisLog "Successfully parsed: $($entries.Count) entries" "SUCCESS"
+    if ($parseErrors -gt 0) {
+        Write-AnalysisLog "Failed to parse: $parseErrors lines" "WARNING"
+    }
+    
+    return $entries
+}
+
+function Get-ExtractedData {
+    param(
+        [array]$Entries,
+        [string]$PatternName,
+        [string]$Pattern
+    )
+    
+    $extracted = @()
+    
+    foreach ($entry in $Entries) {
+        $matches = [regex]::Matches($entry.RawLine, $Pattern)
+        foreach ($match in $matches) {
+            $extracted += [PSCustomObject]@{
+                Type = $PatternName
+                Value = $match.Value
+                Timestamp = $entry.TimestampParsed
+                Context = $entry.RawLine.Substring(0, [Math]::Min(100, $entry.RawLine.Length))
+            }
+        }
+    }
+    
+    return $extracted
+}
+
+function Get-ErrorAnalysis {
+    param([array]$Entries)
+    
+    $errors = $Entries | Where-Object { 
+        $_.level -match 'ERROR|CRITICAL|FATAL' -or 
+        $_.status -ge 400 -or
+        $_.eventtype -eq 'Failed'
+    }
+    
+    $analysis = @{
+        TotalErrors = $errors.Count
+        ErrorsByType = $errors | Group-Object level | Select-Object Name, Count
+        ErrorsByHour = $errors | Where-Object TimestampParsed | Group-Object { $_.TimestampParsed.Hour } | Select-Object @{Name="Hour";Expression={$_.Name}}, Count
+        TopErrors = $errors | Group-Object message | Sort-Object Count -Descending | Select-Object -First 10 Name, Count
+    }
+    
+    return $analysis
+}
+
+function Get-SecurityAnalysis {
+    param([array]$Entries)
+    
+    # Extract IP addresses
+    $ips = @()
+    foreach ($entry in $Entries) {
+        if ($entry.PSObject.Properties['ip']) {
+            $ips += $entry.ip
+        }
+        else {
+            $matches = [regex]::Matches($entry.RawLine, $ExtractionPatterns['IPAddress'])
+            $ips += $matches.Value
+        }
+    }
+    
+    # Failed logon detection
+    $failedLogons = $Entries | Where-Object { 
+        $_.RawLine -match 'failed|failure|denied|unauthorized' -and 
+        $_.RawLine -match 'logon|login|auth'
+    }
+    
+    # Suspicious activity patterns
+    $suspiciousIPs = $ips | Group-Object | Where-Object Count -gt 100 | Select-Object Name, Count
+    
+    $analysis = @{
+        UniqueIPs = ($ips | Select-Object -Unique).Count
+        FailedLogons = $failedLogons.Count
+        SuspiciousIPs = $suspiciousIPs
+        FailedLogonsByIP = $failedLogons | ForEach-Object {
+            if ($_ -match $ExtractionPatterns['IPAddress']) { $Matches[0] }
+        } | Group-Object | Sort-Object Count -Descending | Select-Object -First 10 Name, Count
+    }
+    
+    return $analysis
+}
+
+function New-HTMLReport {
+    param(
+        [array]$Entries,
+        [hashtable]$ErrorAnalysis,
+        [hashtable]$SecurityAnalysis,
+        [hashtable]$Statistics
+    )
+    
+    $reportPath = Join-Path $OutputPath "LogAnalysisReport-$timestamp.html"
+    
+    $errorRows = if ($ErrorAnalysis.TopErrors) {
+        ($ErrorAnalysis.TopErrors | ForEach-Object {
+            "<tr><td>$($_.Count)</td><td>$($_.Name)</td></tr>"
+        }) -join "`n"
+    } else { "<tr><td colspan='2'>No errors found</td></tr>" }
+    
+    $suspiciousIPRows = if ($SecurityAnalysis.SuspiciousIPs) {
+        ($SecurityAnalysis.SuspiciousIPs | ForEach-Object {
+            "<tr><td>$($_.Name)</td><td>$($_.Count)</td></tr>"
+        }) -join "`n"
+    } else { "<tr><td colspan='2'>No suspicious activity detected</td></tr>" }
+    
+    $statisticsSection = if ($Statistics) {
         @"
-        <div class="alert-section">
-            <h3>⚠️ Active Alerts</h3>
-            <ul>
-                $(($HealthData.Alerts | ForEach-Object { "<li>$_</li>" }) -join "`n")
-            </ul>
+        <div class="section">
+            <h2>📊 Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>$($Statistics.TotalEntries)</h3>
+                    <p>Total Log Entries</p>
+                </div>
+                <div class="stat-card">
+                    <h3>$($Statistics.EntriesPerHour)</h3>
+                    <p>Avg Entries/Hour</p>
+                </div>
+                <div class="stat-card">
+                    <h3>$($Statistics.TimeSpan)</h3>
+                    <p>Time Span</p>
+                </div>
+                <div class="stat-card">
+                    <h3>$($Statistics.UniqueIPs)</h3>
+                    <p>Unique IP Addresses</p>
+                </div>
+            </div>
         </div>
 "@
-    } else {
-        "<div class='success-section'><p>✅ No alerts - All systems operating normally</p></div>"
-    }
+    } else { "" }
     
-    $htmlBody = @"
+    $htmlReport = @"
 <!DOCTYPE html>
 <html>
 <head>
+    <title>Log Analysis Report</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; border-bottom: 3px solid $statusColor; padding-bottom: 15px; }
-        .status-badge { display: inline-block; padding: 8px 16px; border-radius: 4px; color: white; background-color: $statusColor; font-weight: bold; margin: 15px 0; }
-        .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 25px 0; }
-        .metric-card { background-color: #ecf0f1; padding: 20px; border-radius: 6px; text-align: center; }
-        .metric-card h3 { margin: 0; font-size: 28px; color: #3498db; }
-        .metric-card p { margin: 10px 0 0 0; color: #7f8c8d; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        h1 { color: #2c3e50; }
+        .section { background-color: #fff; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 20px 0; }
+        .stat-card { background-color: #ecf0f1; padding: 20px; border-radius: 8px; text-align: center; }
+        .stat-card h3 { margin: 0; font-size: 32px; color: #3498db; }
+        .stat-card p { margin: 10px 0 0 0; color: #666; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
         th { background-color: #3498db; color: white; padding: 12px; text-align: left; }
         td { padding: 10px; border-bottom: 1px solid #ddd; }
-        tr:hover { background-color: #f8f9fa; }
-        .alert-section { background-color: #fadbd8; padding: 15px; border-left: 4px solid #e74c3c; margin: 20px 0; border-radius: 4px; }
-        .success-section { background-color: #d5f4e6; padding: 15px; border-left: 4px solid #27ae60; margin: 20px 0; border-radius: 4px; }
-        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #7f8c8d; font-size: 0.9em; }
+        tr:hover { background-color: #f5f5f5; }
+        .error { color: #e74c3c; font-weight: bold; }
+        .warning { color: #f39c12; font-weight: bold; }
+        .summary { background-color: #e8f4f8; padding: 15px; border-left: 4px solid #3498db; margin: 20px 0; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🖥️ System Health Notification</h1>
+    <h1>🔍 Log Analysis Report</h1>
+    
+    <div class="summary">
+        <p><strong>Generated:</strong> $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
+        <p><strong>Log Type:</strong> $LogType</p>
+        <p><strong>Log File:</strong> $LogPath</p>
+        <p><strong>Total Entries Analyzed:</strong> $($Entries.Count)</p>
+    </div>
+    
+    $statisticsSection
+    
+    <div class="section">
+        <h2>⚠️ Error Analysis</h2>
+        <p><strong>Total Errors:</strong> <span class="error">$($ErrorAnalysis.TotalErrors)</span></p>
         
-        <div class="status-badge">Status: $($HealthData.Status)</div>
-        
-        <p><strong>Computer:</strong> $($HealthData.ComputerName)</p>
-        <p><strong>Report Time:</strong> $($HealthData.CollectionTime.ToString('yyyy-MM-dd HH:mm:ss'))</p>
-        <p><strong>Operating System:</strong> $($HealthData.OS)</p>
-        <p><strong>Uptime:</strong> $($HealthData.Uptime) hours</p>
-        
-        $alertSection
-        
-        <h2>System Metrics</h2>
-        <div class="metric-grid">
-            <div class="metric-card">
-                <h3>$($HealthData.MemoryUsedPercent)%</h3>
-                <p>Memory Used</p>
-            </div>
-            <div class="metric-card">
-                <h3>$($HealthData.CPULoad)%</h3>
-                <p>CPU Load</p>
-            </div>
-            <div class="metric-card">
-                <h3>$($HealthData.TotalMemoryGB) GB</h3>
-                <p>Total Memory</p>
-            </div>
-        </div>
-        
-        <h2>Disk Information</h2>
+        <h3>Top 10 Error Messages</h3>
         <table>
-            <tr>
-                <th>Drive</th>
-                <th>Total Size</th>
-                <th>Free Space</th>
-                <th>Used %</th>
-                <th>Status</th>
-            </tr>
-            $diskRows
+            <tr><th>Count</th><th>Error Message</th></tr>
+            $errorRows
         </table>
         
-        <div class="footer">
-            <p>This is an automated notification from the System Monitoring Service.</p>
-            <p>Notification Type: $NotificationType | Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
-            <p>Log file: $logFile</p>
-        </div>
+        <h3>Errors by Hour</h3>
+        <table>
+            <tr><th>Hour</th><th>Count</th></tr>
+            $(if($ErrorAnalysis.ErrorsByHour) {
+                ($ErrorAnalysis.ErrorsByHour | ForEach-Object { "<tr><td>$($_.Hour):00</td><td>$($_.Count)</td></tr>" }) -join "`n"
+            } else { "<tr><td colspan='2'>No time-based data available</td></tr>" })
+        </table>
     </div>
+    
+    <div class="section">
+        <h2>🔒 Security Analysis</h2>
+        <p><strong>Unique IP Addresses:</strong> $($SecurityAnalysis.UniqueIPs)</p>
+        <p><strong>Failed Logon Attempts:</strong> <span class="error">$($SecurityAnalysis.FailedLogons)</span></p>
+        
+        <h3>Suspicious Activity (High Request Volume)</h3>
+        <table>
+            <tr><th>IP Address</th><th>Request Count</th></tr>
+            $suspiciousIPRows
+        </table>
+        
+        <h3>Top IPs with Failed Logons</h3>
+        <table>
+            <tr><th>IP Address</th><th>Failed Attempts</th></tr>
+            $(if($SecurityAnalysis.FailedLogonsByIP) {
+                ($SecurityAnalysis.FailedLogonsByIP | ForEach-Object { "<tr><td>$($_.Name)</td><td>$($_.Count)</td></tr>" }) -join "`n"
+            } else { "<tr><td colspan='2'>No failed logons detected</td></tr>" })
+        </table>
+    </div>
+    
+    <p style="margin-top: 40px; color: #7f8c8d; font-size: 0.9em;">
+        Report generated by Log Analysis Tool | Detailed log: $reportLog
+    </p>
 </body>
 </html>
 "@
     
-    return $htmlBody
-}
-
-function New-SystemReportAttachment {
-    param([PSCustomObject]$HealthData)
-    
-    Write-NotificationLog "Generating report attachment..." "INFO"
-    
-    $reportPath = [System.IO.Path]::Combine($script:LogPath, "SystemReport-$timestamp.txt")
-    
-    $reportContent = @"
-SYSTEM HEALTH REPORT
-Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-================================================================================
-
-SYSTEM INFORMATION
-------------------
-Computer Name: $($HealthData.ComputerName)
-Operating System: $($HealthData.OS)
-OS Version: $($HealthData.OSVersion)
-System Uptime: $($HealthData.Uptime) hours
-Overall Status: $($HealthData.Status)
-
-RESOURCE UTILIZATION
---------------------
-Total Memory: $($HealthData.TotalMemoryGB) GB
-Memory Used: $($HealthData.MemoryUsedPercent)%
-CPU Load: $($HealthData.CPULoad)%
-
-DISK INFORMATION
-----------------
-$($HealthData.Disks | ForEach-Object {
-"Drive: $($_.Drive) | Total: $($_.TotalGB) GB | Free: $($_.FreeGB) GB | Used: $($_.PercentUsed)% | Status: $($_.Status)"
-} | Out-String)
-
-ACTIVE ALERTS
--------------
-$(if ($HealthData.Alerts.Count -gt 0) {
-    $HealthData.Alerts -join "`n"
-} else {
-    "No alerts - All systems normal"
-})
-
-================================================================================
-End of Report
-"@
-    
-    [System.IO.File]::WriteAllText($reportPath, $reportContent)
-    Write-NotificationLog "Report attachment created: $reportPath" "SUCCESS"
-    
+    $htmlReport | Out-File -Path $reportPath -Encoding UTF8
     return $reportPath
 }
 
-function Send-EmailNotification {
-    param(
-        [string[]]$To,
-        [string]$Subject,
-        [string]$HtmlBody,
-        [string[]]$AttachmentPaths,
-        [PSCredential]$Credential
-    )
-    
-    Write-NotificationLog "Preparing email notification..." "INFO"
-    
-    $message = $null
-    $smtp = $null
-    $attachments = @()
-    
-    try {
-        # Create message
-        $message = New-Object System.Net.Mail.MailMessage
-        $message.From = "system-monitoring@company.com"
-        
-        foreach ($recipient in $To) {
-            $message.To.Add($recipient)
-        }
-        
-        $message.Subject = $Subject
-        $message.Body = $HtmlBody
-        $message.IsBodyHtml = $true
-        $message.Priority = [System.Net.Mail.MailPriority]::Normal
-        
-        # Add attachments if provided
-        if ($AttachmentPaths) {
-            foreach ($path in $AttachmentPaths) {
-                if ([System.IO.File]::Exists($path)) {
-                    $attachment = New-Object System.Net.Mail.Attachment($path)
-                    $message.Attachments.Add($attachment)
-                    $attachments += $attachment
-                    Write-NotificationLog "  Added attachment: $path" "INFO"
-                }
-            }
-        }
-        
-        # Configure SMTP client
-        $smtp = New-Object System.Net.Mail.SmtpClient($SmtpServer, $SmtpPort)
-        $smtp.EnableSsl = $UseSSL
-        
-        if ($Credential) {
-            $smtp.Credentials = $Credential
-        }
-        
-        # Send email
-        Write-NotificationLog "Sending email to: $($To -join ', ')" "INFO"
-        $smtp.Send($message)
-        
-        Write-NotificationLog "Email sent successfully" "SUCCESS"
-        return $true
-    }
-    catch {
-        Write-NotificationLog "Failed to send email: $($_.Exception.Message)" "ERROR"
-        return $false
-    }
-    finally {
-        # Cleanup
-        if ($attachments) {
-            foreach ($attachment in $attachments) {
-                $attachment.Dispose()
-            }
-        }
-        
-        if ($message) {
-            $message.Dispose()
-        }
-        
-        if ($smtp) {
-            $smtp.Dispose()
-        }
-    }
-}
-
 # Main execution
-Write-NotificationLog "=== EMAIL NOTIFICATION SYSTEM STARTED ===" "INFO"
-Write-NotificationLog "Notification Type: $NotificationType" "INFO"
-Write-NotificationLog "Recipients: $($Recipients -join ', ')" "INFO"
+Write-AnalysisLog "=== LOG ANALYSIS STARTED ===" "INFO"
+Write-AnalysisLog "Log Type: $LogType" "INFO"
 
-# Get credentials
-$credential = $null
-if ($CredentialPath -and [System.IO.File]::Exists($CredentialPath)) {
-    try {
-        $credential = Import-Clixml -Path $CredentialPath
-        Write-NotificationLog "Loaded credentials from file" "SUCCESS"
-    }
-    catch {
-        Write-NotificationLog "Failed to load credentials: $($_.Exception.Message)" "WARNING"
-    }
-}
+# Get log pattern
+$pattern = $LogPatterns[$LogType]
 
-if (-not $credential) {
-    Write-Host "`nSMTP credentials required" -ForegroundColor Yellow
-    $credential = Get-Credential -Message "Enter SMTP credentials"
-}
+# Parse log entries
+$entries = Get-LogEntries -Path $LogPath -Pattern $pattern
 
-# Collect system health data
-$healthData = Get-SystemHealthData
-
-if (-not $healthData) {
-    Write-NotificationLog "Cannot proceed without health data" "ERROR"
+if ($entries.Count -eq 0) {
+    Write-AnalysisLog "No log entries found or parsed. Exiting." "ERROR"
     exit 1
 }
 
-# Generate email body
-$emailBody = New-HTMLEmailBody -HealthData $healthData -NotificationType $NotificationType
-
-# Generate subject line based on status
-$subject = switch ($healthData.Status) {
-    "Critical" { "🔴 CRITICAL: System Health Alert - $($healthData.ComputerName)" }
-    "Warning" { "⚠️ WARNING: System Health Notice - $($healthData.ComputerName)" }
-    default { "✅ System Health Report - $($healthData.ComputerName)" }
+# Filter by date range if specified
+if ($StartDate) {
+    $entries = $entries | Where-Object { $_.TimestampParsed -ge $StartDate }
+    Write-AnalysisLog "Filtered to entries after $StartDate : $($entries.Count) entries" "INFO"
 }
 
-# Prepare attachments
-$attachmentPaths = @()
-if ($IncludeSystemReport) {
-    $reportPath = New-SystemReportAttachment -HealthData $healthData
-    $attachmentPaths += $reportPath
+$entries = $entries | Where-Object { $_.TimestampParsed -le $EndDate }
+
+# Perform analysis
+Write-AnalysisLog "`nPerforming error analysis..." "INFO"
+$errorAnalysis = Get-ErrorAnalysis -Entries $entries
+
+Write-AnalysisLog "Performing security analysis..." "INFO"
+$securityAnalysis = Get-SecurityAnalysis -Entries $entries
+
+# Calculate statistics if requested
+$statistics = $null
+if ($IncludeStatistics) {
+    Write-AnalysisLog "Calculating statistics..." "INFO"
+    $timestamps = $entries | Where-Object TimestampParsed | Select-Object -ExpandProperty TimestampParsed
+    if ($timestamps) {
+        $timeSpan = ($timestamps | Measure-Object -Maximum -Minimum)
+        $hours = ($timeSpan.Maximum - $timeSpan.Minimum).TotalHours
+        
+        $statistics = @{
+            TotalEntries = $entries.Count
+            EntriesPerHour = if ($hours -gt 0) { [math]::Round($entries.Count / $hours, 1) } else { 0 }
+            TimeSpan = "$([math]::Round($hours, 1)) hours"
+            UniqueIPs = $securityAnalysis.UniqueIPs
+        }
+    }
 }
 
-# Send notification
-$success = Send-EmailNotification -To $Recipients -Subject $subject -HtmlBody $emailBody -AttachmentPaths $attachmentPaths -Credential $credential
+# Generate reports
+Write-AnalysisLog "`nGenerating HTML report..." "INFO"
+$htmlReportPath = New-HTMLReport -Entries $entries -ErrorAnalysis $errorAnalysis -SecurityAnalysis $securityAnalysis -Statistics $statistics
+
+# Export structured data
+$jsonPath = Join-Path $OutputPath "LogData-$timestamp.json"
+$entries | ConvertTo-Json -Depth 5 | Out-File -Path $jsonPath -Encoding UTF8
+
+$csvPath = Join-Path $OutputPath "ErrorSummary-$timestamp.csv"
+$errorAnalysis.TopErrors | Export-Csv -Path $csvPath -NoTypeInformation
 
 # Summary
 Write-Host "`n" + ("=" * 70) -ForegroundColor Cyan
-Write-Host "EMAIL NOTIFICATION SYSTEM COMPLETE" -ForegroundColor Cyan
+Write-Host "LOG ANALYSIS COMPLETE" -ForegroundColor Cyan
 Write-Host ("=" * 70) -ForegroundColor Cyan
-Write-Host "System Status: $($healthData.Status)"
-Write-Host "Alerts: $($healthData.Alerts.Count)"
-Write-Host "Email Sent: $(if($success){'Yes'}else{'No'})"
-Write-Host "Recipients: $($Recipients.Count)"
-Write-Host "`nLog File: $logFile"
+Write-Host "Entries Analyzed: $($entries.Count)"
+Write-Host "Errors Found: $($errorAnalysis.TotalErrors)"
+Write-Host "Failed Logons: $($securityAnalysis.FailedLogons)"
+Write-Host "`nReports Generated:"
+Write-Host "  HTML Report: $htmlReportPath"
+Write-Host "  JSON Data: $jsonPath"
+Write-Host "  CSV Summary: $csvPath"
+Write-Host "  Analysis Log: $reportLog"
 Write-Host ("=" * 70) -ForegroundColor Cyan
 
-Write-NotificationLog "=== EMAIL NOTIFICATION SYSTEM COMPLETED ===" "SUCCESS"
+Write-AnalysisLog "=== LOG ANALYSIS COMPLETED ===" "SUCCESS"
 
-# Return health data for further processing if needed
-return $healthData
-Using the email notification system:
-# Basic health report
-.\EmailNotification.ps1 -Recipients "admin@company.com" -SmtpServer "smtp.gmail.com" -SmtpPort 587
-
-# Alert with system report attachment
-.\EmailNotification.ps1 -NotificationType Alert -Recipients "admin@company.com","manager@company.com" -SmtpServer "smtp.company.com" -IncludeSystemReport
-
-# Custom thresholds
-.\EmailNotification.ps1 -Recipients "ops@company.com" -SmtpServer "smtp.company.com" -Threshold @{CPUPercent=90; MemoryPercent=90; DiskPercent=95}
+# Open HTML report
+Start-Process $htmlReportPath
