@@ -1,32 +1,48 @@
-
 <#
 .SYNOPSIS
-    System Inventory Report with API Integration
+    System Health Monitoring Dashboard
 .DESCRIPTION
-    Collects system information from local and remote computers,
-    enriches data with external API information, and generates
-    reports in JSON, CSV, and HTML formats
+    Monitors event logs, system resources, services, and disk space.
+    Generates HTML dashboard with health status and alerts.
 .PARAMETER ComputerName
-    Target computers for inventory collection
-.PARAMETER IncludePublicIP
-    Query external API for public IP information
+    Target computers to monitor
+.PARAMETER CheckIntervalMinutes
+    Interval between health checks (for continuous monitoring)
+.PARAMETER ContinuousMode
+    Run continuously with periodic checks
 .PARAMETER OutputPath
-    Directory for generated reports
-.PARAMETER OutputFormat
-    Report formats to generate (JSON, CSV, HTML, All)
+    Directory for reports and logs
 .NOTES
-    REQUIRES: Internet connectivity for API features
-    REQUIRES: WinRM enabled for remote computer queries
-    REQUIRES: Administrator privileges for complete inventory
+    REQUIRES: Administrator privileges (for Security log and some operations)
+    REQUIRES: WinRM enabled for remote monitoring
+    REQUIRES: Network connectivity to target computers
 #>
 
 param(
     [string[]]$ComputerName = @($env:COMPUTERNAME),
-    [switch]$IncludePublicIP,
-    [string]$OutputPath = "C:\Reports\Inventory",
-    [ValidateSet("JSON", "CSV", "HTML", "All")]
-    [string]$OutputFormat = "All"
+    [int]$CheckIntervalMinutes = 5,
+    [switch]$ContinuousMode,
+    [string]$OutputPath = "C:\Monitoring"
 )
+
+# ⚠️ Check for administrator privileges
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Host "WARNING: Administrator privileges recommended for full monitoring capabilities" -ForegroundColor Yellow
+    Write-Host "Security log monitoring and some operations will be unavailable" -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
+}
+
+# Configuration
+$config = @{
+    DiskSpaceThreshold = 20  # Percent free
+    MemoryThreshold = 90     # Percent used
+    CPUThreshold = 90        # Percent used
+    ServiceCheckMinutes = 60 # Look back period for service failures
+    EventCheckMinutes = 60   # Look back period for critical events
+    CriticalServices = @("WinRM", "EventLog", "W32Time", "Dnscache")
+}
 
 # Ensure output directory exists
 if (-not (Test-Path $OutputPath)) {
@@ -34,9 +50,9 @@ if (-not (Test-Path $OutputPath)) {
 }
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
-$logFile = Join-Path $OutputPath "InventoryLog-$timestamp.log"
+$logFile = Join-Path $OutputPath "HealthMonitor-$timestamp.log"
 
-function Write-InventoryLog {
+function Write-MonitorLog {
     param([string]$Message, [string]$Level = "INFO")
     
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [$Level] $Message" | Add-Content -Path $logFile
@@ -46,299 +62,303 @@ function Write-InventoryLog {
         "WARNING" = "Yellow"
         "SUCCESS" = "Green"
         "INFO" = "Cyan"
+        "ALERT" = "Magenta"
     }[$Level]
     
     Write-Host $Message -ForegroundColor $color
 }
 
-function Get-PublicIPInfo {
-    # ⚠️ REQUIRES: Internet connectivity
-    try {
-        $response = Invoke-RestMethod -Uri "https://ipapi.co/json/" -Method Get -TimeoutSec 10 -ErrorAction Stop
-        
-        return [PSCustomObject]@{
-            PublicIP = $response.ip
-            City = $response.city
-            Region = $response.region
-            Country = $response.country_name
-            ISP = $response.org
-        }
-    }
-    catch {
-        Write-InventoryLog "Failed to retrieve public IP info: $($_.Exception.Message)" "WARNING"
-        return $null
-    }
-}
-
-function Get-SystemInventory {
+function Get-SystemHealth {
     param([string]$Computer)
     
-    Write-InventoryLog "Collecting inventory from $Computer..." "INFO"
+    Write-MonitorLog "Checking health of $Computer..." "INFO"
+    
+    $health = @{
+        ComputerName = $Computer
+        CheckTime = Get-Date
+        Alerts = @()
+        Status = "Healthy"
+    }
     
     try {
-        # Collect system information via CIM
+        # Collect system information
         $os = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $Computer -ErrorAction Stop
         $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $Computer -ErrorAction Stop
         $cpu = Get-CimInstance -ClassName Win32_Processor -ComputerName $Computer -ErrorAction Stop
-        $bios = Get-CimInstance -ClassName Win32_BIOS -ComputerName $Computer -ErrorAction Stop
         
-        # Collect disk information
-        $disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ComputerName $Computer -ErrorAction Stop
-        $diskInfo = $disks | ForEach-Object {
-            [PSCustomObject]@{
-                Drive = $_.DeviceID
-                SizeGB = [math]::Round($_.Size / 1GB, 2)
-                FreeGB = [math]::Round($_.FreeSpace / 1GB, 2)
-                PercentFree = [math]::Round(($_.FreeSpace / $_.Size) * 100, 1)
+        # Calculate metrics
+        $health.OS = $os.Caption
+        $health.Uptime = [math]::Round(((Get-Date) - $os.LastBootUpTime).TotalDays, 2)
+        $health.TotalMemoryGB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
+        $health.FreeMemoryGB = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
+        $health.MemoryUsedPercent = [math]::Round((1 - ($os.FreePhysicalMemory / $os.TotalVisibleMemorySize)) * 100, 1)
+        $health.CPULoad = $cpu.LoadPercentage
+        
+        # Check memory
+        if ($health.MemoryUsedPercent -gt $config.MemoryThreshold) {
+            $health.Alerts += "Memory usage critical: $($health.MemoryUsedPercent)%"
+            $health.Status = "Warning"
+            Write-MonitorLog "  ALERT: High memory usage on $Computer" "ALERT"
+        }
+        
+        # Check CPU
+        if ($health.CPULoad -gt $config.CPUThreshold) {
+            $health.Alerts += "CPU load high: $($health.CPULoad)%"
+            $health.Status = "Warning"
+            Write-MonitorLog "  ALERT: High CPU load on $Computer" "ALERT"
+        }
+        
+        # Check disk space
+        $disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ComputerName $Computer
+        $health.Disks = @()
+        
+        foreach ($disk in $disks) {
+            $percentFree = [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 1)
+            
+            $diskInfo = [PSCustomObject]@{
+                Drive = $disk.DeviceID
+                SizeGB = [math]::Round($disk.Size / 1GB, 2)
+                FreeGB = [math]::Round($disk.FreeSpace / 1GB, 2)
+                PercentFree = $percentFree
+                Status = if ($percentFree -lt $config.DiskSpaceThreshold) { "Critical" } else { "OK" }
+            }
+            
+            $health.Disks += $diskInfo
+            
+            if ($percentFree -lt $config.DiskSpaceThreshold) {
+                $health.Alerts += "Disk $($disk.DeviceID) low space: $percentFree% free"
+                $health.Status = "Critical"
+                Write-MonitorLog "  ALERT: Low disk space on $Computer $($disk.DeviceID)" "ALERT"
             }
         }
         
-        # Collect network adapter information
-        $adapters = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ComputerName $Computer -ErrorAction Stop
-        $networkInfo = $adapters | ForEach-Object {
-            [PSCustomObject]@{
-                Description = $_.Description
-                IPAddress = $_.IPAddress -join ", "
-                MACAddress = $_.MACAddress
-                Gateway = $_.DefaultIPGateway -join ", "
+        # Check critical services
+        $serviceIssues = @()
+        foreach ($serviceName in $config.CriticalServices) {
+            $service = Get-Service -Name $serviceName -ComputerName $Computer -ErrorAction SilentlyContinue
+            
+            if ($service) {
+                if ($service.Status -ne 'Running') {
+                    $serviceIssues += "$serviceName is $($service.Status)"
+                    $health.Status = "Critical"
+                    Write-MonitorLog "  ALERT: Service $serviceName not running on $Computer" "ALERT"
+                }
             }
         }
         
-        # Collect installed software (top 20 by name)
-        $software = Get-CimInstance -ClassName Win32_Product -ComputerName $Computer -ErrorAction SilentlyContinue |
-            Select-Object Name, Version, Vendor -First 20
-        
-        # Build inventory object
-        $inventory = [PSCustomObject]@{
-            ComputerName = $Computer
-            CollectionTime = Get-Date
-            OperatingSystem = $os.Caption
-            OSVersion = $os.Version
-            OSArchitecture = $os.OSArchitecture
-            Manufacturer = $cs.Manufacturer
-            Model = $cs.Model
-            SerialNumber = $bios.SerialNumber
-            BIOSVersion = $bios.SMBIOSBIOSVersion
-            TotalMemoryGB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
-            FreeMemoryGB = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
-            CPUModel = $cpu.Name
-            CPUCores = $cpu.NumberOfCores
-            CPULogicalProcessors = $cpu.NumberOfLogicalProcessors
-            LastBoot = $os.LastBootUpTime
-            UptimeDays = [math]::Round(((Get-Date) - $os.LastBootUpTime).TotalDays, 2)
-            Domain = $cs.Domain
-            Disks = $diskInfo
-            NetworkAdapters = $networkInfo
-            InstalledSoftware = $software
-            PublicIPInfo = $null
+        $health.ServiceIssues = $serviceIssues
+        if ($serviceIssues.Count -gt 0) {
+            $health.Alerts += "Critical services not running: $($serviceIssues.Count)"
         }
         
-        Write-InventoryLog "  Inventory collected successfully" "SUCCESS"
-        return $inventory
+        # Check event logs for recent critical errors
+        $criticalEvents = Get-WinEvent -FilterHashtable @{
+            LogName = 'System'
+            Level = 1  # Critical
+            StartTime = (Get-Date).AddMinutes(-$config.EventCheckMinutes)
+        } -ComputerName $Computer -ErrorAction SilentlyContinue
+        
+        if ($criticalEvents) {
+            $health.Alerts += "Critical system events: $($criticalEvents.Count)"
+            $health.Status = "Warning"
+            $health.CriticalEventCount = $criticalEvents.Count
+            Write-MonitorLog "  ALERT: $($criticalEvents.Count) critical events on $Computer" "ALERT"
+        }
+        
+        # Check for service failures
+        $serviceFailures = Get-WinEvent -FilterHashtable @{
+            LogName = 'System'
+            ProviderName = 'Service Control Manager'
+            Level = 2
+            StartTime = (Get-Date).AddMinutes(-$config.ServiceCheckMinutes)
+        } -ComputerName $Computer -ErrorAction SilentlyContinue
+        
+        if ($serviceFailures) {
+            $health.Alerts += "Service failures detected: $($serviceFailures.Count)"
+            $health.ServiceFailureCount = $serviceFailures.Count
+        }
+        
+        Write-MonitorLog "  Health check completed: $($health.Status)" $(if($health.Status -eq "Healthy"){"SUCCESS"}else{"WARNING"})
     }
     catch {
-        Write-InventoryLog "  Failed to collect inventory: $($_.Exception.Message)" "ERROR"
-        return $null
+        $health.Status = "Error"
+        $health.Alerts += "Failed to collect data: $($_.Exception.Message)"
+        Write-MonitorLog "  ERROR: Failed to check $Computer - $($_.Exception.Message)" "ERROR"
     }
-}
-
-# Main execution
-Write-InventoryLog "=== SYSTEM INVENTORY COLLECTION STARTED ===" "INFO"
-Write-InventoryLog "Target systems: $($ComputerName -join ', ')" "INFO"
-
-# Collect inventory from all computers
-$inventoryData = @()
-
-foreach ($computer in $ComputerName) {
-    $inventory = Get-SystemInventory -Computer $computer
-    if ($inventory) {
-        $inventoryData += $inventory
-    }
-}
-
-# Enrich with public IP information if requested
-if ($IncludePublicIP -and $inventoryData.Count -gt 0) {
-    Write-InventoryLog "`nEnriching data with public IP information..." "INFO"
-    $publicIPInfo = Get-PublicIPInfo
     
-    if ($publicIPInfo) {
-        # Add public IP info to each inventory record
-        foreach ($inv in $inventoryData) {
-            $inv.PublicIPInfo = $publicIPInfo
+    return [PSCustomObject]$health
+}
+
+function New-HealthDashboard {
+    param($HealthData)
+    
+    $dashboardPath = Join-Path $OutputPath "HealthDashboard-$(Get-Date -Format 'yyyy-MM-dd-HHmmss').html"
+    
+    # Build server rows
+    $serverRows = foreach ($server in $HealthData) {
+        $statusColor = switch ($server.Status) {
+            "Healthy" { "green" }
+            "Warning" { "orange" }
+            "Critical" { "red" }
+            "Error" { "darkred" }
         }
-        Write-InventoryLog "  Public IP enrichment completed" "SUCCESS"
-    }
-}
-
-if ($inventoryData.Count -eq 0) {
-    Write-InventoryLog "No inventory data collected. Exiting." "ERROR"
-    exit 1
-}
-
-Write-InventoryLog "`nGenerating reports..." "INFO"
-
-# Generate JSON report
-if ($OutputFormat -in "JSON", "All") {
-    $jsonPath = Join-Path $OutputPath "Inventory-$timestamp.json"
-    
-    # Create JSON with proper depth for nested objects
-    $inventoryData | ConvertTo-Json -Depth 10 | Out-File -Path $jsonPath -Encoding UTF8
-    
-    Write-InventoryLog "  JSON report: $jsonPath" "SUCCESS"
-}
-
-# Generate CSV report (flattened data)
-if ($OutputFormat -in "CSV", "All") {
-    $csvPath = Join-Path $OutputPath "Inventory-$timestamp.csv"
-    
-    # Flatten complex objects for CSV
-    $flatData = $inventoryData | ForEach-Object {
-        [PSCustomObject]@{
-            ComputerName = $_.ComputerName
-            CollectionTime = $_.CollectionTime
-            OS = $_.OperatingSystem
-            OSVersion = $_.OSVersion
-            Manufacturer = $_.Manufacturer
-            Model = $_.Model
-            SerialNumber = $_.SerialNumber
-            TotalMemoryGB = $_.TotalMemoryGB
-            FreeMemoryGB = $_.FreeMemoryGB
-            CPUModel = $_.CPUModel
-            CPUCores = $_.CPUCores
-            UptimeDays = $_.UptimeDays
-            Domain = $_.Domain
-            DiskCount = $_.Disks.Count
-            SoftwareCount = $_.InstalledSoftware.Count
-            PublicIP = if ($_.PublicIPInfo) { $_.PublicIPInfo.PublicIP } else { "N/A" }
+        
+        $alertsList = if ($server.Alerts.Count -gt 0) {
+            "<ul>" + (($server.Alerts | ForEach-Object { "<li>$_</li>" }) -join "") + "</ul>"
+        } else {
+            "<span style='color: green;'>No alerts</span>"
         }
-    }
-    
-    $flatData | Export-Csv -Path $csvPath -NoTypeInformation
-    
-    Write-InventoryLog "  CSV report: $csvPath" "SUCCESS"
-}
-
-# Generate HTML report
-if ($OutputFormat -in "HTML", "All") {
-    $htmlPath = Join-Path $OutputPath "Inventory-$timestamp.html"
-    
-    # Build system rows
-    $systemRows = foreach ($inv in $inventoryData) {
-        $diskRows = ($inv.Disks | ForEach-Object {
-            "<tr><td>$($_.Drive)</td><td>$($_.SizeGB) GB</td><td>$($_.FreeGB) GB</td><td>$($_.PercentFree)%</td></tr>"
-        }) -join ""
         
-        $networkRows = ($inv.NetworkAdapters | ForEach-Object {
-            "<tr><td>$($_.Description)</td><td>$($_.IPAddress)</td><td>$($_.MACAddress)</td></tr>"
-        }) -join ""
-        
-        $publicIPSection = if ($inv.PublicIPInfo) {
-            "<p><strong>Public IP:</strong> $($inv.PublicIPInfo.PublicIP) ($($inv.PublicIPInfo.City), $($inv.PublicIPInfo.Country))</p>"
+        $diskRows = if ($server.Disks) {
+            ($server.Disks | ForEach-Object {
+                $diskColor = if ($_.Status -eq "Critical") { "red" } else { "green" }
+                "<tr style='background-color: #f9f9f9;'>
+                    <td>$($_.Drive)</td>
+                    <td>$($_.SizeGB) GB</td>
+                    <td>$($_.FreeGB) GB</td>
+                    <td style='color: $diskColor; font-weight: bold;'>$($_.PercentFree)%</td>
+                </tr>"
+            }) -join ""
         } else {
             ""
         }
         
-        @"
-        <div class="system-card">
-            <h2>$($inv.ComputerName)</h2>
-            <div class="info-grid">
-                <div>
-                    <h3>System Information</h3>
-                    <p><strong>OS:</strong> $($inv.OperatingSystem)</p>
-                    <p><strong>Version:</strong> $($inv.OSVersion)</p>
-                    <p><strong>Manufacturer:</strong> $($inv.Manufacturer)</p>
-                    <p><strong>Model:</strong> $($inv.Model)</p>
-                    <p><strong>Serial:</strong> $($inv.SerialNumber)</p>
-                    <p><strong>Domain:</strong> $($inv.Domain)</p>
-                    <p><strong>Uptime:</strong> $($inv.UptimeDays) days</p>
-                    $publicIPSection
-                </div>
-                <div>
-                    <h3>Hardware</h3>
-                    <p><strong>CPU:</strong> $($inv.CPUModel)</p>
-                    <p><strong>Cores:</strong> $($inv.CPUCores) ($($inv.CPULogicalProcessors) logical)</p>
-                    <p><strong>Total Memory:</strong> $($inv.TotalMemoryGB) GB</p>
-                    <p><strong>Free Memory:</strong> $($inv.FreeMemoryGB) GB</p>
-                </div>
-            </div>
-            
-            <h3>Disk Information</h3>
-            <table>
-                <tr><th>Drive</th><th>Size</th><th>Free</th><th>% Free</th></tr>
-                $diskRows
-            </table>
-            
-            <h3>Network Adapters</h3>
-            <table>
-                <tr><th>Description</th><th>IP Address</th><th>MAC Address</th></tr>
-                $networkRows
-            </table>
-            
-            <p><strong>Installed Software:</strong> $($inv.InstalledSoftware.Count) packages</p>
-        </div>
-"@
+        "<tr>
+            <td><strong>$($server.ComputerName)</strong></td>
+            <td style='color: $statusColor; font-weight: bold;'>$($server.Status)</td>
+            <td>$($server.OS)</td>
+            <td>$($server.Uptime) days</td>
+            <td>$($server.MemoryUsedPercent)%</td>
+            <td>$($server.CPULoad)%</td>
+            <td>$alertsList</td>
+        </tr>
+        $(if($diskRows){"<tr><td colspan='7'><table style='width: 100%; margin: 10px 0;'>
+            <tr style='background-color: #e0e0e0;'>
+                <th>Drive</th><th>Size</th><th>Free</th><th>% Free</th>
+            </tr>
+            $diskRows
+        </table></td></tr>"})"
     }
     
-    $htmlReport = @"
+    $healthyCount = ($HealthData | Where-Object Status -eq "Healthy").Count
+    $warningCount = ($HealthData | Where-Object Status -eq "Warning").Count
+    $criticalCount = ($HealthData | Where-Object Status -eq "Critical").Count
+    $errorCount = ($HealthData | Where-Object Status -eq "Error").Count
+    
+    $htmlDashboard = @"
 <!DOCTYPE html>
 <html>
 <head>
-    <title>System Inventory Report</title>
+    <title>System Health Monitoring Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
         h1 { color: #2c3e50; }
         .summary { background-color: #fff; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .system-card { background-color: #fff; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
-        h2 { color: #3498db; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-        h3 { color: #34495e; margin-top: 20px; }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-        th { background-color: #3498db; color: white; padding: 10px; text-align: left; }
-        td { padding: 8px; border-bottom: 1px solid #ddd; }
+        .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 20px 0; }
+        .summary-card { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+        .summary-card h3 { margin: 0; font-size: 36px; }
+        .summary-card p { margin: 10px 0 0 0; color: #666; }
+        .healthy { color: green; }
+        .warning { color: orange; }
+        .critical { color: red; }
+        .error { color: darkred; }
+        table { border-collapse: collapse; width: 100%; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        th { background-color: #3498db; color: white; padding: 15px; text-align: left; }
+        td { padding: 12px 15px; border-bottom: 1px solid #ddd; }
         tr:hover { background-color: #f5f5f5; }
-        p { margin: 5px 0; }
         .timestamp { color: #7f8c8d; font-size: 0.9em; margin-top: 30px; }
     </style>
 </head>
 <body>
-    <h1>📊 System Inventory Report</h1>
+    <h1>🖥️ System Health Monitoring Dashboard</h1>
     
     <div class="summary">
         <p><strong>Generated:</strong> $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
-        <p><strong>Systems Inventoried:</strong> $($inventoryData.Count)</p>
-        <p><strong>Total Memory:</strong> $(($inventoryData | Measure-Object TotalMemoryGB -Sum).Sum) GB</p>
-        <p><strong>Total Disks:</strong> $(($inventoryData.Disks | Measure-Object).Count)</p>
+        <p><strong>Monitoring:</strong> $($HealthData.Count) system(s)</p>
     </div>
     
-    $($systemRows -join "`n")
+    <div class="summary-grid">
+        <div class="summary-card">
+            <h3 class="healthy">$healthyCount</h3>
+            <p>Healthy</p>
+        </div>
+        <div class="summary-card">
+            <h3 class="warning">$warningCount</h3>
+            <p>Warning</p>
+        </div>
+        <div class="summary-card">
+            <h3 class="critical">$criticalCount</h3>
+            <p>Critical</p>
+        </div>
+        <div class="summary-card">
+            <h3 class="error">$errorCount</h3>
+            <p>Error</p>
+        </div>
+    </div>
     
-    <p class="timestamp">Report generated by System Inventory Tool</p>
+    <h2>System Status</h2>
+    <table>
+        <tr>
+            <th>Computer</th>
+            <th>Status</th>
+            <th>OS</th>
+            <th>Uptime</th>
+            <th>Memory Used</th>
+            <th>CPU Load</th>
+            <th>Alerts</th>
+        </tr>
+        $($serverRows -join "`n")
+    </table>
+    
+    <p class="timestamp">Dashboard auto-refreshes every $CheckIntervalMinutes minutes in continuous mode</p>
 </body>
 </html>
 "@
     
-    $htmlReport | Out-File -Path $htmlPath -Encoding UTF8
+    $htmlDashboard | Out-File -Path $dashboardPath -Encoding UTF8
     
-    Write-InventoryLog "  HTML report: $htmlPath" "SUCCESS"
+    return $dashboardPath
 }
 
-# Summary
-Write-Host "`n" + ("=" * 70) -ForegroundColor Cyan
-Write-Host "SYSTEM INVENTORY REPORT COMPLETE" -ForegroundColor Cyan
-Write-Host ("=" * 70) -ForegroundColor Cyan
-Write-Host "Systems Inventoried: $($inventoryData.Count)"
-Write-Host "Reports Generated: $OutputPath"
-Write-Host "Log File: $logFile"
+# Main monitoring loop
+Write-MonitorLog "=== SYSTEM HEALTH MONITORING STARTED ===" "INFO"
+Write-MonitorLog "Monitoring: $($ComputerName -join ', ')" "INFO"
 
-if ($IncludePublicIP -and $publicIPInfo) {
-    Write-Host "`nPublic IP Information:" -ForegroundColor Cyan
-    Write-Host "  IP: $($publicIPInfo.PublicIP)"
-    Write-Host "  Location: $($publicIPInfo.City), $($publicIPInfo.Country)"
-}
+do {
+    $healthData = @()
+    
+    foreach ($computer in $ComputerName) {
+        $healthData += Get-SystemHealth -Computer $computer
+    }
+    
+    # Generate dashboard
+    $dashboardPath = New-HealthDashboard -HealthData $healthData
+    Write-MonitorLog "Dashboard generated: $dashboardPath" "SUCCESS"
+    
+    # Summary
+    $criticalSystems = $healthData | Where-Object Status -eq "Critical"
+    $warningSystems = $healthData | Where-Object Status -eq "Warning"
+    
+    if ($criticalSystems) {
+        Write-MonitorLog "CRITICAL SYSTEMS: $($criticalSystems.ComputerName -join ', ')" "ALERT"
+    }
+    
+    if ($warningSystems) {
+        Write-MonitorLog "WARNING SYSTEMS: $($warningSystems.ComputerName -join ', ')" "WARNING"
+    }
+    
+    if (-not $criticalSystems -and -not $warningSystems) {
+        Write-MonitorLog "All systems healthy" "SUCCESS"
+    }
+    
+    if ($ContinuousMode) {
+        Write-Host "`nNext check in $CheckIntervalMinutes minutes. Press Ctrl+C to stop." -ForegroundColor Cyan
+        Start-Sleep -Seconds ($CheckIntervalMinutes * 60)
+    }
+    
+} while ($ContinuousMode)
 
-Write-Host ("=" * 70) -ForegroundColor Cyan
+Write-MonitorLog "=== SYSTEM HEALTH MONITORING COMPLETED ===" "INFO"
 
-Write-InventoryLog "=== SYSTEM INVENTORY COLLECTION COMPLETED ===" "SUCCESS"
-
-# Return inventory data
-return $inventoryData
+# Return final health data
+return $healthData
