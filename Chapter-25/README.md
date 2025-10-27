@@ -10,10 +10,9 @@ AdminToolkit/
 ├── Config/
 │   └── settings.json          # Configuration
 ├── Modules/
-│   ├── Logging.psm1          # Logging functions
-│   ├── HealthCheck.psm1      # Health check functions
-│   └── Reporting.psm1        # Report generation
+│   ├── Logging.psm1           # Logging functions
+│   ├── HealthCheck.psm1       # Health check functions
+│   └── Reporting.psm1         # Report generation
 ├── Logs/                      # Log files (created at runtime)
 ├── Reports/                   # Generated reports (created at runtime)
 └── README.md                  # Documentation
-
