@@ -1,11 +1,10 @@
-<#
-Main toolkit script (AdminToolkit.ps1):
-#Requires -Version 5.1
+# Main toolkit script (AdminToolkit.ps1):
+# Requires -Version 5.1
 # ✅ No special requirements for viewing menu
 # ⚠️ REQUIRES: Administrator privileges for some operations (disk cleanup, service management)
 # WHERE TO RUN: PowerShell
 # WHAT THIS DOES: Main menu interface for admin toolkit
-#>
+
 [CmdletBinding()]
 param()
 
