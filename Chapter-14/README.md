@@ -17,5 +17,6 @@ It is designed to be "production-ready," meaning it includes features like loggi
 
 # Skip firewall verification
 .\SystemHardening.ps1 -SkipFirewall
+```
 
 This system hardening script demonstrates production-ready security automation: comprehensive registry modifications, service management, feature control, configurable options via parameters, report-only mode for validation, detailed logging and HTML reporting, and modular design allowing selective application. It transforms hours of manual security configuration into a repeatable, auditable, two-minute operation that ensures consistent security posture across your environment.
