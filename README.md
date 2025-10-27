@@ -1,6 +1,6 @@
-# PowerShell Automation Made Simple for System Administrators - Project Code Repository
+# PowerShell Automation Made Simple for System Administrators by Zephyr Nash- Project Code Repository
 
-Welcome to the official code repository for **"PowerShell for System Administrators"**. This repository contains all practical projects and code examples from the book.
+Welcome to the official code repository for **"PowerShell Automation Made Simple for System Administrators"**. This repository contains all practical projects and code examples from the book.
 
 ## 📘 About This Repository
 
