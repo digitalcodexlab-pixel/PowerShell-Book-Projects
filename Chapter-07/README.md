@@ -2,7 +2,7 @@
 We'll build a complete log file management system that archives old logs, compresses them, cleans up space, and reports on actions taken—real-world automation you'd deploy in production environments.
 
 
-## Using the script:
+## Using the script: Chapter-07/ProcessEmployees.ps1
  *Run with defaults*--->  .\ManageLogs.ps1
 
 
