@@ -1,356 +1,419 @@
 <#
 .SYNOPSIS
-    Automated System Maintenance and Application Deployment.
-
+    System Hardening and Security Configuration Script.
 .DESCRIPTION
-    Creates scheduled tasks for maintenance operations and deploys
-    applications to remote computers with verification and reporting.
-
-.PARAMETER ComputerName
-    Target computers for deployment.
-
-.PARAMETER InstallerPath
-    Path to the application installer.
-
-.PARAMETER CreateScheduledTasks
-    A switch to create maintenance scheduled tasks.
-
-.NOTES
-    REQUIRES: Administrator privileges
-    REQUIRES: WinRM enabled for remote deployment
-    REQUIRES: Network access to target computers
+    Applies security hardening measures including registry modifications,
+    feature management, and system configuration enforcement.
+.PARAMETER SkipWindowsUpdate
+    Skip Windows Update configuration.
+.PARAMETER SkipFirewall
+    Skip firewall verification.
+.PARAMETER ReportOnly
+    Check settings without making changes
 #>
 param(
-    [string[]]$ComputerName = @($env:COMPUTERNAME),
-    [string]$InstallerPath,
-    [switch]$CreateScheduledTasks
+    [switch]$SkipWindowsUpdate,
+    [switch]$SkipFirewall,
+    [switch]$ReportOnly
 )
-
-# ⚠️ Check for administrator privileges
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Host "ERROR: Administrator privileges required" -ForegroundColor Red
-    exit 1
-}
 
 # Configuration
 $config = @{
-    LogPath             = "C:\Logs\Maintenance"
-    TempPath            = "C:\Temp"
-    MaintenanceScriptPath = "C:\Scripts\Maintenance"
+    LogPath = "C:\Logs\Hardening"
+    CompanyName = "YourCompany"
+    RequireAdminApproval = $true
 }
 
-# Ensure directories exist
-foreach ($path in $config.Values) {
-    if (-not (Test-Path $path)) {
-        New-Item -Path $path -ItemType Directory -Force | Out-Null
-    }
-}
-
+# Initialize logging
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
-$logFile = Join-Path $config.LogPath "Maintenance-$timestamp.log"
+if (-not (Test-Path $config.LogPath)) {
+    New-Item -Path $config.LogPath -ItemType Directory | Out-Null
+}
+$logFile = Join-Path $config.LogPath "Hardening-$timestamp.log"
 
-function Write-MaintenanceLog {
+function Write-HardeningLog {
     param([string]$Message, [string]$Level = "INFO")
-
+    
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [$Level] $Message" | Add-Content -Path $logFile
-
+    
     $color = @{
         "ERROR"   = "Red"
         "WARNING" = "Yellow"
         "SUCCESS" = "Green"
         "INFO"    = "Cyan"
+        "CHANGE"  = "Magenta"
     }[$Level]
-
+    
     Write-Host $Message -ForegroundColor $color
 }
 
-Write-MaintenanceLog "=== MAINTENANCE AND DEPLOYMENT STARTED ===" "INFO"
-
-#region Create Maintenance Scripts
-if ($CreateScheduledTasks) {
-    Write-MaintenanceLog "`n[1] Creating Maintenance Scripts" "INFO"
-
-    # Disk Cleanup Script
-    $diskCleanupScript = @'
-# Automated Disk Cleanup Script
-$logPath = "C:\Logs\Maintenance\DiskCleanup-$(Get-Date -Format 'yyyy-MM-dd').log"
-"=== Disk Cleanup Started: $(Get-Date) ===" | Add-Content -Path $logPath
-
-# Clean Windows Temp
-$tempFiles = Get-ChildItem -Path $env:TEMP -Recurse -Force -ErrorAction SilentlyContinue
-$tempSize = ($tempFiles | Measure-Object Length -Sum).Sum / 1MB
-Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-"Cleaned temp files: $([math]::Round($tempSize, 2)) MB" | Add-Content -Path $logPath
-
-# Clean old log files (older than 30 days)
-$oldLogs = Get-ChildItem -Path "C:\Logs" -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object LastWriteTime -lt (Get-Date).AddDays(-30)
-$logSize = ($oldLogs | Measure-Object Length -Sum).Sum / 1MB
-$oldLogs | Remove-Item -Force -ErrorAction SilentlyContinue
-"Removed old logs: $([math]::Round($logSize, 2)) MB" | Add-Content -Path $logPath
-
-"=== Disk Cleanup Completed: $(Get-Date) ===" | Add-Content -Path $logPath
-'@
-    $diskCleanupPath = Join-Path $config.MaintenanceScriptPath "DiskCleanup.ps1"
-    $diskCleanupScript | Out-File -Path $diskCleanupPath -Force
-    Write-MaintenanceLog "  Created: $diskCleanupPath" "SUCCESS"
-
-    # System Health Check Script
-    $healthCheckScript = @'
-# Automated Health Check Script
-$logPath = "C:\Logs\Maintenance\HealthCheck-$(Get-Date -Format 'yyyy-MM-dd').log"
-"=== Health Check Started: $(Get-Date) ===" | Add-Content -Path $logPath
-
-# Check disk space
-$disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3"
-foreach ($disk in $disks) {
-    $percentFree = [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 1)
-    $status = if ($percentFree -lt 10) { "CRITICAL" } elseif ($percentFree -lt 20) { "WARNING" } else { "OK" }
-    "$($disk.DeviceID) - $percentFree% free - $status" | Add-Content -Path $logPath
-}
-
-# Check critical services
-$services = @("wuauserv", "EventLog", "W32Time")
-foreach ($svc in $services) {
-    $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
-    $status = if ($service.Status -eq 'Running') { "OK" } else { "STOPPED" }
-    "Service $svc - $status" | Add-Content -Path $logPath
-}
-
-# Check system uptime
-$os = Get-CimInstance -ClassName Win32_OperatingSystem
-$uptime = (Get-Date) - $os.LastBootUpTime
-"System Uptime: $($uptime.Days) days, $($uptime.Hours) hours" | Add-Content -Path $logPath
-
-"=== Health Check Completed: $(Get-Date) ===" | Add-Content -Path $logPath
-'@
-    $healthCheckPath = Join-Path $config.MaintenanceScriptPath "HealthCheck.ps1"
-    $healthCheckScript | Out-File -Path $healthCheckPath -Force
-    Write-MaintenanceLog "  Created: $healthCheckPath" "SUCCESS"
-}
-#endregion
-
-#region Create Scheduled Tasks
-if ($CreateScheduledTasks) {
-    Write-MaintenanceLog "`n[2] Creating Scheduled Tasks" "INFO"
-
-    # Task 1: Daily Disk Cleanup
+function Set-RegistryValue {
+    param(
+        [string]$Path,
+        [string]$Name,
+        $Value,
+        [string]$Type = "DWord",
+        [string]$Description
+    )
+    
+    if ($ReportOnly) {
+        $current = $null
+        try {
+            $current = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
+        }
+        catch {}
+        
+        if ($current -eq $Value) {
+            Write-HardeningLog "  ✓ $Description : Already configured" "SUCCESS"
+        } else {
+            Write-HardeningLog "  ✗ $Description : Needs configuration (Current: $current, Required: $Value)" "WARNING"
+        }
+        return
+    }
+    
     try {
-        $action = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-            -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$diskCleanupPath`""
+        # Create key if doesn't exist
+        if (-not (Test-Path $Path)) {
+            New-Item -Path $Path -Force | Out-Null
+        }
         
-        $trigger = New-ScheduledTaskTrigger -Daily -At "2:00AM"
-        
-        $settings = New-ScheduledTaskSettingsSet `
-            -AllowStartIfOnBatteries `
-            -DontStopIfGoingOnBatteries `
-            -StartWhenAvailable
-        
-        Register-ScheduledTask -TaskName "DailyDiskCleanup" `
-            -Action $action `
-            -Trigger $trigger `
-            -Settings $settings `
-            -Description "Automated disk cleanup and log rotation" `
-            -User "SYSTEM" `
-            -Force | Out-Null
-        
-        Write-MaintenanceLog "  ✓ Created: DailyDiskCleanup task" "SUCCESS"
+        # Set value
+        New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
+        Write-HardeningLog "  ✓ $Description" "CHANGE"
     }
     catch {
-        Write-MaintenanceLog "  ✗ Failed to create DailyDiskCleanup: $($_.Exception.Message)" "ERROR"
-    }
-
-    # Task 2: Hourly Health Check
-    try {
-        $action = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-            -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$healthCheckPath`""
-        
-        $trigger = New-ScheduledTaskTrigger -Once -At "8:00AM" `
-            -RepetitionInterval (New-TimeSpan -Hours 1) `
-            -RepetitionDuration (New-TimeSpan -Hours 12)
-        
-        $settings = New-ScheduledTaskSettingsSet `
-            -AllowStartIfOnBatteries `
-            -DontStopIfGoingOnBatteries
-        
-        Register-ScheduledTask -TaskName "HourlyHealthCheck" `
-            -Action $action `
-            -Trigger $trigger `
-            -Settings $settings `
-            -Description "Hourly system health verification" `
-            -User "SYSTEM" `
-            -Force | Out-Null
-        
-        Write-MaintenanceLog "  ✓ Created: HourlyHealthCheck task" "SUCCESS"
-    }
-    catch {
-        Write-MaintenanceLog "  ✗ Failed to create HourlyHealthCheck: $($_.Exception.Message)" "ERROR"
-    }
-
-    # Task 3: Weekly Application Check
-    try {
-        $action = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-            -Argument "-Command `"Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion | Export-Csv C:\Logs\Maintenance\InstalledApps-`$(Get-Date -Format 'yyyy-MM-dd').csv -NoTypeInformation`""
-        
-        $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "7:00AM"
-        
-        Register-ScheduledTask -TaskName "WeeklyAppInventory" `
-            -Action $action `
-            -Trigger $trigger `
-            -Description "Weekly installed applications inventory" `
-            -User "SYSTEM" `
-            -Force | Out-Null
-        
-        Write-MaintenanceLog "  ✓ Created: WeeklyAppInventory task" "SUCCESS"
-    }
-    catch {
-        Write-MaintenanceLog "  ✗ Failed to create WeeklyAppInventory: $($_.Exception.Message)" "ERROR"
+        Write-HardeningLog "  ✗ Failed to set $Description : $($_.Exception.Message)" "ERROR"
     }
 }
-#endregion
 
-#region Application Deployment
-if ($InstallerPath) {
-    Write-MaintenanceLog "`n[3] Deploying Application" "INFO"
+# Start hardening
+Write-HardeningLog "=== SYSTEM HARDENING STARTED ===" "INFO"
+if ($ReportOnly) {
+    Write-HardeningLog "REPORT-ONLY MODE: No changes will be made" "WARNING"
+}
+Write-HardeningLog "Computer: $env:COMPUTERNAME" "INFO"
 
-    if (-not (Test-Path $InstallerPath)) {
-        Write-MaintenanceLog "  Installer not found: $InstallerPath" "ERROR"
-    }
-    else {
-        $deploymentResults = @()
-
-        foreach ($computer in $ComputerName) {
-            Write-MaintenanceLog "  Deploying to $computer..." "INFO"
-
-            # Test connectivity
-            if (-not (Test-Connection -ComputerName $computer -Count 1 -Quiet)) {
-                Write-MaintenanceLog "    ✗ Unreachable" "ERROR"
-                $deploymentResults += [PSCustomObject]@{Computer = $computer; Status = "Unreachable" }
-                continue
-            }
-
-            try {
-                # Copy installer
-                $remotePath = "\\$computer\C$\Temp\$(Split-Path $InstallerPath -Leaf)"
-                Copy-Item -Path $InstallerPath -Destination $remotePath -Force -ErrorAction Stop
-                Write-MaintenanceLog "    ✓ Installer copied" "SUCCESS"
-
-                # Install
-                $installScript = {
-                    param($Path)
-                    $p = Start-Process "msiexec.exe" -ArgumentList "/i `"$Path`" /quiet /norestart" -Wait -PassThru
-                    return $p.ExitCode
+#region Disable Unnecessary Services
+Write-HardeningLog "`n[1] Disabling Unnecessary Services" "INFO"
+$servicesToDisable = @(
+    @{Name="RemoteRegistry"; Desc="Remote Registry"},
+    @{Name="TapiSrv"; Desc="Telephony"},
+    @{Name="Fax"; Desc="Fax Service"}
+)
+foreach ($svc in $servicesToDisable) {
+    try {
+        $service = Get-Service -Name $svc.Name -ErrorAction SilentlyContinue
+        if ($service) {
+            if ($ReportOnly) {
+                if ($service.StartType -eq "Disabled") {
+                    Write-HardeningLog "  ✓ $($svc.Desc) : Already disabled" "SUCCESS"
+                } else {
+                    Write-HardeningLog "  ✗ $($svc.Desc) : Should be disabled (Current: $($service.StartType))" "WARNING"
                 }
-
-                $exitCode = Invoke-Command -ComputerName $computer `
-                    -ScriptBlock $installScript `
-                    -ArgumentList "C:\Temp\$(Split-Path $InstallerPath -Leaf)" `
-                    -ErrorAction Stop
-
-                if ($exitCode -eq 0 -or $exitCode -eq 3010) {
-                    Write-MaintenanceLog "    ✓ Installation successful" "SUCCESS"
-                    $deploymentResults += [PSCustomObject]@{Computer = $computer; Status = "Success"; ExitCode = $exitCode }
+            } else {
+                if ($service.StartType -ne "Disabled") {
+                    Stop-Service -Name $svc.Name -Force -ErrorAction SilentlyContinue
+                    Set-Service -Name $svc.Name -StartupType Disabled
+                    Write-HardeningLog "  ✓ Disabled $($svc.Desc)" "CHANGE"
                 }
-                else {
-                    Write-MaintenanceLog "    ✗ Installation failed (Exit: $exitCode)" "ERROR"
-                    $deploymentResults += [PSCustomObject]@{Computer = $computer; Status = "Failed"; ExitCode = $exitCode }
-                }
-
-                # Cleanup
-                Remove-Item -Path $remotePath -Force -ErrorAction SilentlyContinue
-            }
-            catch {
-                Write-MaintenanceLog "    ✗ Deployment error: $($_.Exception.Message)" "ERROR"
-                $deploymentResults += [PSCustomObject]@{Computer = $computer; Status = "Error" }
             }
         }
-
-        # Deployment summary
-        Write-MaintenanceLog "`n  Deployment Summary:" "INFO"
-        $deploymentResults | Format-Table -AutoSize | Out-String | Write-MaintenanceLog
+    }
+    catch {
+        Write-HardeningLog "  ✗ Service $($svc.Name) not found or error" "WARNING"
     }
 }
 #endregion
 
-#region Generate HTML Report
-Write-MaintenanceLog "`n[4] Generating Report" "INFO"
-$reportPath = Join-Path $config.LogPath "MaintenanceReport-$timestamp.html"
+#region Configure User Account Control (UAC)
+Write-HardeningLog "`n[2] Configuring User Account Control" "INFO"
+$uacPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+
+# Prompt for admin credentials
+Set-RegistryValue -Path $uacPath -Name "ConsentPromptBehaviorAdmin" -Value 2 `
+    -Description "Prompt for credentials on admin operations"
+
+# Secure desktop for prompts
+Set-RegistryValue -Path $uacPath -Name "PromptOnSecureDesktop" -Value 1 `
+    -Description "Show UAC prompts on secure desktop"
+#endregion
+
+#region Disable AutoRun/AutoPlay
+Write-HardeningLog "`n[3] Disabling AutoRun and AutoPlay" "INFO"
+Set-RegistryValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" `
+    -Name "NoDriveTypeAutoRun" -Value 255 `
+    -Description "Disable AutoRun for all drive types"
+Set-RegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers" `
+    -Name "DisableAutoplay" -Value 1 `
+    -Description "Disable AutoPlay"
+#endregion
+
+#region Configure Windows Defender
+Write-HardeningLog "`n[4] Configuring Windows Defender" "INFO"
+$defenderPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"
+
+# Real-time protection
+Set-RegistryValue -Path "$defenderPath\Real-Time Protection" `
+    -Name "DisableRealtimeMonitoring" -Value 0 `
+    -Description "Enable real-time protection"
+
+# Cloud-based protection
+Set-RegistryValue -Path "$defenderPath\Spynet" `
+    -Name "SpynetReporting" -Value 2 `
+    -Description "Enable cloud-based protection"
+#endregion
+
+#region Disable Guest Account
+Write-HardeningLog "`n[5] Securing User Accounts" "INFO"
+try {
+    $guest = Get-LocalUser -Name "Guest" -ErrorAction SilentlyContinue
+    if ($guest) {
+        if ($ReportOnly) {
+            if ($guest.Enabled) {
+                Write-HardeningLog "  ✗ Guest account should be disabled" "WARNING"
+            } else {
+                Write-HardeningLog "  ✓ Guest account disabled" "SUCCESS"
+            }
+        } else {
+            if ($guest.Enabled) {
+                Disable-LocalUser -Name "Guest"
+                Write-HardeningLog "  ✓ Disabled Guest account" "CHANGE"
+            }
+        }
+    }
+}
+catch {
+    Write-HardeningLog "  ! Could not check Guest account" "WARNING"
+}
+#endregion
+
+#region Configure Password Policy
+Write-HardeningLog "`n[6] Configuring Password Policy" "INFO"
+Set-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters" `
+    -Name "RequireStrongKey" -Value 1 `
+    -Description "Require strong session key"
+Set-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" `
+    -Name "LimitBlankPasswordUse" -Value 1 `
+    -Description "Limit blank password use"
+#endregion
+
+#region Configure Screen Lock
+Write-HardeningLog "`n[7] Configuring Screen Lock Policy" "INFO"
+Set-RegistryValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
+    -Name "InactivityTimeoutSecs" -Value 900 `
+    -Description "Lock screen after 15 minutes of inactivity"
+Set-RegistryValue -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop" `
+    -Name "ScreenSaveTimeOut" -Value "900" -Type "String" `
+    -Description "Screen saver timeout 15 minutes"
+Set-RegistryValue -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop" `
+    -Name "ScreenSaverIsSecure" -Value "1" -Type "String" `
+    -Description "Password protect screen saver"
+#endregion
+
+#region Configure Windows Update
+if (-not $SkipWindowsUpdate) {
+    Write-HardeningLog "`n[8] Configuring Windows Update" "INFO"
+    
+    $wuPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
+    Set-RegistryValue -Path $wuPath -Name "NoAutoUpdate" -Value 0 `
+        -Description "Enable automatic updates"
+    Set-RegistryValue -Path $wuPath -Name "AUOptions" -Value 4 `
+        -Description "Auto download and install updates"
+    Set-RegistryValue -Path $wuPath -Name "ScheduledInstallDay" -Value 0 `
+        -Description "Install updates every day"
+}
+#endregion
+
+#region Verify Firewall Status
+if (-not $SkipFirewall) {
+    Write-HardeningLog "`n[9] Verifying Windows Firewall" "INFO"
+    
+    $profiles = @("Domain", "Private", "Public")
+    foreach ($profile in $profiles) {
+        try {
+            $fwProfile = Get-NetFirewallProfile -Name $profile
+            
+            if ($ReportOnly) {
+                if ($fwProfile.Enabled) {
+                    Write-HardeningLog "  ✓ $profile profile firewall enabled" "SUCCESS"
+                } else {
+                    Write-HardeningLog "  ✗ $profile profile firewall disabled" "WARNING"
+                }
+            } else {
+                if (-not $fwProfile.Enabled) {
+                    Set-NetFirewallProfile -Name $profile -Enabled True
+                    Write-HardeningLog "  ✓ Enabled $profile profile firewall" "CHANGE"
+                } else {
+                    Write-HardeningLog "  ✓ $profile profile firewall already enabled" "SUCCESS"
+                }
+            }
+        }
+        catch {
+            Write-HardeningLog "  ✗ Error checking $profile firewall" "ERROR"
+        }
+    }
+}
+#endregion
+
+#region Disable SMBv1
+Write-HardeningLog "`n[10] Disabling SMBv1 Protocol" "INFO"
+try {
+    $smbv1 = Get-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -ErrorAction SilentlyContinue
+    
+    if ($smbv1) {
+        if ($ReportOnly) {
+            if ($smbv1.State -eq "Disabled") {
+                Write-HardeningLog "  ✓ SMBv1 already disabled" "SUCCESS"
+            } else {
+                Write-HardeningLog "  ✗ SMBv1 should be disabled (security risk)" "WARNING"
+            }
+        } else {
+            if ($smbv1.State -ne "Disabled") {
+                Disable-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -NoRestart | Out-Null
+                Write-HardeningLog "  ✓ Disabled SMBv1" "CHANGE"
+            }
+        }
+    }
+}
+catch {
+    Write-HardeningLog "  ! Could not disable SMBv1: $($_.Exception.Message)" "WARNING"
+}
+#endregion
+
+#region Configure Remote Desktop Security
+Write-HardeningLog "`n[11] Configuring Remote Desktop Security" "INFO"
+$rdpPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server"
+
+# Require NLA (Network Level Authentication)
+Set-RegistryValue -Path "$rdpPath\WinStations\RDP-Tcp" `
+    -Name "UserAuthentication" -Value 1 `
+    -Description "Require Network Level Authentication for RDP"
+
+# Set encryption level
+Set-RegistryValue -Path "$rdpPath\WinStations\RDP-Tcp" `
+    -Name "MinEncryptionLevel" -Value 3 `
+    -Description "Require high encryption for RDP"
+#endregion
+
+#region Audit and Event Log Configuration
+Write-HardeningLog "`n[12] Configuring Audit Policies" "INFO"
+Set-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" `
+    -Name "SCENoApplyLegacyAuditPolicy" -Value 1 `
+    -Description "Disable legacy audit policy"
+
+# Increase Security event log size
+$logPath = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Security"
+Set-RegistryValue -Path $logPath -Name "MaxSize" -Value 0x14000000 `
+    -Description "Set Security log size to 320MB"
+#endregion
+
+#region Network Security
+Write-HardeningLog "`n[13] Configuring Network Security" "INFO"
+$netPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
+
+# Enable SYN attack protection
+Set-RegistryValue -Path $netPath -Name "SynAttackProtect" -Value 1 `
+    -Description "Enable SYN attack protection"
+
+# Disable IP source routing
+Set-RegistryValue -Path $netPath -Name "DisableIPSourceRouting" -Value 2 `
+    -Description "Disable IP source routing"
+
+# Ignore NetBIOS name release requests
+Set-RegistryValue -Path $netPath -Name "NoNameReleaseOnDemand" -Value 1 `
+    -Description "Ignore NetBIOS name release"
+#endregion
+
+#region Generate Hardening Report
+Write-HardeningLog "`n=== GENERATING HARDENING REPORT ===" "INFO"
+$reportPath = Join-Path $config.LogPath "HardeningReport-$timestamp.html"
 $htmlReport = @"
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Maintenance and Deployment Report</title>
+    <title>System Hardening Report - $env:COMPUTERNAME</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         h1 { color: #2c3e50; }
+        h2 { color: #34495e; margin-top: 30px; }
         .summary { background-color: #e8f4f8; padding: 15px; margin: 20px 0; border-radius: 5px; }
         .success { color: green; font-weight: bold; }
+        .warning { color: orange; font-weight: bold; }
         .error { color: red; font-weight: bold; }
+        .change { color: purple; font-weight: bold; }
         table { border-collapse: collapse; width: 100%; margin: 20px 0; }
         th { background-color: #3498db; color: white; padding: 10px; text-align: left; }
         td { padding: 8px; border-bottom: 1px solid #ddd; }
+        tr:hover { background-color: #f5f5f5; }
     </style>
 </head>
 <body>
-    <h1>Maintenance and Deployment Report</h1>
+    <h1>System Hardening Report</h1>
     <div class="summary">
-        <p><strong>Generated:</strong> $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
         <p><strong>Computer:</strong> $env:COMPUTERNAME</p>
+        <p><strong>Generated:</strong> $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
+        <p><strong>Mode:</strong> $(if ($ReportOnly) {'Report Only'} else {'Configuration Applied'})</p>
+        <p><strong>User:</strong> $env:USERNAME</p>
     </div>
 
-    <h2>Operations Performed</h2>
-    <ul>
-        $(if ($CreateScheduledTasks) {"<li class='success'>Scheduled tasks created</li>"} else {"<li>Scheduled tasks: Skipped</li>"})
-        $(if ($InstallerPath) {"<li class='success'>Application deployment executed</li>"} else {"<li>Application deployment: Skipped</li>"})
-    </ul>
-
-    <h2>Scheduled Tasks</h2>
-    <p>The following automated maintenance tasks have been configured:</p>
-    <ul>
-        <li><strong>DailyDiskCleanup:</strong> Runs daily at 2:00 AM - Cleans temporary files and old logs</li>
-        <li><strong>HourlyHealthCheck:</strong> Runs hourly from 8 AM to 8 PM - Monitors disk space and critical services</li>
-        <li><strong>WeeklyAppInventory:</strong> Runs Monday at 7:00 AM - Exports installed applications list</li>
-    </ul>
-
-    <h2>Log Files</h2>
-    <p>Detailed logs available at: <code>$logFile</code></p>
+    <h2>Configuration Summary</h2>
+    <p>Review the detailed log file for complete information: <code>$logFile</code></p>
     
+    <h2>Applied Hardening Measures</h2>
+    <ul>
+        <li>Disabled unnecessary services (RemoteRegistry, Telephony, Fax)</li>
+        <li>Configured User Account Control (UAC) for enhanced security</li>
+        <li>Disabled AutoRun and AutoPlay</li>
+        <li>Configured Windows Defender real-time and cloud protection</li>
+        <li>Disabled Guest account</li>
+        <li>Enforced password policy requirements</li>
+        <li>Configured automatic screen lock (15 minutes)</li>
+        $(if (-not $SkipWindowsUpdate) {"<li>Configured automatic Windows Updates</li>"})
+        $(if (-not $SkipFirewall) {"<li>Verified Windows Firewall enabled on all profiles</li>"})
+        <li>Disabled SMBv1 protocol</li>
+        <li>Enhanced Remote Desktop security (NLA, encryption)</li>
+        <li>Configured audit policies and event log sizes</li>
+        <li>Applied network security hardening</li>
+    </ul>
+
+    <h2>Recommendations</h2>
+    <ul>
+        <li>Restart the computer to ensure all changes take effect</li>
+        <li>Test critical applications to ensure compatibility</li>
+        <li>Review audit logs regularly for security events</li>
+        <li>Keep Windows and all applications updated</li>
+        <li>Implement additional security tools (antivirus, EDR) as needed</li>
+    </ul>
+
     <p style="margin-top: 40px; color: #7f8c8d; font-size: 0.9em;">
-        Report generated by Automated Maintenance System
+        Report generated by System Hardening Script v1.0
     </p>
 </body>
 </html>
 "@
 $htmlReport | Out-File -Path $reportPath -Encoding UTF8
-Write-MaintenanceLog "  Report saved: $reportPath" "SUCCESS"
+Write-HardeningLog "HTML report generated: $reportPath" "SUCCESS"
 #endregion
 
-# Final Summary
+# Summary
 Write-Host "`n" + ("=" * 70) -ForegroundColor Cyan
-Write-Host "MAINTENANCE AND DEPLOYMENT COMPLETE" -ForegroundColor Cyan
+Write-Host "SYSTEM HARDENING COMPLETE" -ForegroundColor Cyan
 Write-Host ("=" * 70) -ForegroundColor Cyan
-if ($CreateScheduledTasks) {
-    Write-Host "Scheduled Tasks Created:" -ForegroundColor Green
-    Get-ScheduledTask -TaskName "DailyDiskCleanup", "HourlyHealthCheck", "WeeklyAppInventory" -ErrorAction SilentlyContinue |
-        Format-Table TaskName, State, @{Label = "NextRun"; Expression = { (Get-ScheduledTaskInfo $_).NextRunTime } } -AutoSize
-}
-if ($InstallerPath) {
-    $successCount = ($deploymentResults | Where-Object Status -eq "Success").Count
-    $foregroundColor = if ($successCount -eq $ComputerName.Count) { "Green" } else { "Yellow" }
-    Write-Host "`nDeployment Results: $successCount / $($ComputerName.Count) successful" -ForegroundColor $foregroundColor
-}
-Write-Host "`nLog File: $logFile"
-Write-Host "Report: $reportPath"
+Write-Host "Computer:     $env:COMPUTERNAME"
+Write-Host "Mode:         $(if ($ReportOnly) {'Report Only - No Changes Made'} else {'Configuration Applied'})"
+Write-Host "Log File:     $logFile"
+Write-Host "Report:       $reportPath"
+Write-Host "`n⚠️  RESTART REQUIRED to apply all changes" -ForegroundColor Yellow
 Write-Host ("=" * 70) -ForegroundColor Cyan
-Write-MaintenanceLog "=== MAINTENANCE AND DEPLOYMENT COMPLETED ===" "SUCCESS"
 
-# Return summary object
+Write-HardeningLog "=== SYSTEM HARDENING COMPLETED ===" "SUCCESS"
+
+# Return summary
 return [PSCustomObject]@{
-    Timestamp             = Get-Date
-    ScheduledTasksCreated = $CreateScheduledTasks.IsPresent
-    DeploymentExecuted    = [bool]$InstallerPath
-    LogFile               = $logFile
-    ReportPath            = $reportPath
-    DeploymentResults     = $deploymentResults
+    ComputerName   = $env:COMPUTERNAME
+    Timestamp      = Get-Date
+    ReportOnlyMode = $ReportOnly
+    LogFile        = $logFile
+    HtmlReport     = $reportPath
 }
+
