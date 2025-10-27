@@ -1,17 +1,21 @@
-# Practical Project: Log Analysis and Reporting Script
-Let's build a comprehensive log analysis and reporting system that parses various log formats, extracts critical information using regex, identifies patterns and anomalies, and generates detailed reports—demonstrating production-ready log processing automation.
+# Practical Project: System Inventory Report from API
+You'll build a comprehensive system inventory report that combines data from multiple sources—local WMI/CIM queries, web APIs for external data, and generates output in multiple formats—demonstrating real-world data handling automation.
 
-# Using the log analysis tool:
-## Analyze application log
-.\LogAnalysis.ps1 -LogPath "C:\Logs\application.log" -LogType Application -IncludeStatistics
 
-## Analyze IIS logs with date filter
-.\LogAnalysis.ps1 -LogPath "C:\inetpub\logs\LogFiles\u_ex241006.log" -LogType IIS -StartDate "2024-10-06"
+## Using the inventory report tool:
+```powershell
 
-## Security log analysis
-.\LogAnalysis.ps1 -LogPath "C:\Logs\security.log" -LogType Security -OutputPath "D:\Reports"
+# Basic local inventory
+.\SystemInventory.ps1
 
-## Custom log format
-.\LogAnalysis.ps1 -LogPath "C:\Logs\custom.log" -LogType Custom
+# Multiple systems with public IP lookup
+.\SystemInventory.ps1 -ComputerName "SERVER01","SERVER02","WORKSTATION03" -IncludePublicIP
 
-This production-ready log analysis system demonstrates comprehensive regex usage: pattern-based log parsing for multiple formats, structured data extraction using capturing groups, error pattern detection and classification, security event identification and anomaly detection, statistical analysis of log patterns, multi-format output (HTML, JSON, CSV), and reusable pattern library for common data types. It transforms thousands of unstructured log lines into actionable intelligence—real operational insight for troubleshooting, security monitoring, and performance analysis.
+# Generate only JSON format
+.\SystemInventory.ps1 -OutputFormat JSON
+
+# Custom output location
+.\SystemInventory.ps1 -OutputPath "D:\Reports" -OutputFormat All
+
+```
+This production-ready inventory system demonstrates comprehensive data handling: collecting structured data from CIM/WMI queries, enriching local data with external API information, handling complex nested data structures (disks, network adapters, software), converting between multiple formats (JSON, CSV, HTML), flattening complex objects for CSV compatibility, generating visual HTML reports with styling, comprehensive error handling and logging, and flexible output format selection. It combines local system queries, REST API integration, and multi-format reporting into unified inventory automation—real enterprise asset management solving operational data collection challenges.
