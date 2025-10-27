@@ -1,19 +1,23 @@
-# Practical Project: Complete Admin Toolkit
+# Practical Project: Advanced Email Notification System
+You'll build a comprehensive email notification system that monitors system health, generates HTML reports, handles multiple notification types, includes attachments, manages templates, and provides robust error handling—demonstrating production-ready .NET integration for operational automation.
 
-Building a complete admin toolkit demonstrates integrating everything learned—menu interfaces, progress feedback, error handling, logging, multiple scripts, configuration management, and professional packaging. This project creates production-ready system administration tool combining health monitoring, reporting, and maintenance capabilities into cohesive solution.
 
-**Project overview:** The Admin Toolkit provides interactive menu for common system administration tasks: checking disk space, monitoring services, viewing event logs, generating health reports, cleaning temporary files, and emailing reports. The toolkit demonstrates professional script architecture, comprehensive error handling, logging, configuration management, and user-friendly interface.
+## Using the email notification system:
+```powershell
 
-# Project structure:
-AdminToolkit/
-├── AdminToolkit.ps1           # Main menu interface
-├── Config/
-│   └── settings.json          # Configuration
-├── Modules/
-│   ├── Logging.psm1          # Logging functions
-│   ├── HealthCheck.psm1      # Health check functions
-│   └── Reporting.psm1        # Report generation
-├── Logs/                      # Log files (created at runtime)
-├── Reports/                   # Generated reports (created at runtime)
-└── README.md                  # Documentation
+# Basic health report
+.\EmailNotification.ps1 -Recipients "admin@company.com" -SmtpServer "smtp.gmail.com" -SmtpPort 587
 
+# Alert with system report attachment
+.\EmailNotification.ps1 -NotificationType Alert -Recipients "admin@company.com","manager@company.com" -SmtpServer "smtp.company.com" -IncludeSystemReport
+
+# Custom thresholds
+.\EmailNotification.ps1 -Recipients "ops@company.com" -SmtpServer "smtp.company.com" -Threshold @{CPUPercent=90; MemoryPercent=90; DiskPercent=95}
+
+# Using saved credentials
+# First, save credentials:
+# Get-Credential | Export-Clixml -Path "C:\Secure\smtp-creds.xml"
+.\EmailNotification.ps1 -Recipients "team@company.com" -SmtpServer "smtp.company.com" -CredentialPath "C:\Secure\smtp-creds.xml"
+
+```
+This production-ready notification system demonstrates comprehensive .NET integration: System.Net.Mail classes for robust email delivery, System.IO for efficient file operations and logging, HTML email generation with dynamic styling based on system status, health monitoring combining CIM queries with .NET processing, attachment handling for detailed reports, secure credential management with encrypted storage, comprehensive error handling and logging, template-based email formatting, threshold-based alerting, and modular design enabling reuse. It combines system monitoring, data collection, report generation, and email delivery into unified operational automation—real infrastructure notification solving monitoring and alerting challenges.
