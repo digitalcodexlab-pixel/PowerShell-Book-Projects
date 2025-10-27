@@ -1,4 +1,4 @@
-#We'll build a complete, practical module you'll actually use—a collection of system administration utilities with proper organization, documentation, and deployment.
+# You'll build a complete, practical module you'll actually use—a collection of system administration utilities with proper organization, documentation, and deployment.
 
 #Create the module structure:
 $moduleName = "AdminTools"
