@@ -4,7 +4,7 @@ You'll build a comprehensive system health monitoring dashboard that continuousl
 
 ## Using the health monitoring dashboard:
 
-```
+```powershell
 # Single health check
 .\HealthMonitor.ps1 -ComputerName "SERVER01"
 
