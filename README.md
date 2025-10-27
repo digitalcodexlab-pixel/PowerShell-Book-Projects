@@ -1,4 +1,4 @@
-# PowerShell for System Administrators - Code Repository
+# PowerShell Automation Made Simple for System Administrators - Project Code Repository
 
 Welcome to the official code repository for **"PowerShell for System Administrators"**. This repository contains all practical projects and code examples from the book.
 
@@ -25,7 +25,7 @@ This repository contains code for chapters with substantial practical projects:
 - **[Chapter 18](Chapter-18/)** - Advanced Data Handling
 - **[Chapter 19](Chapter-19/)** - Regular Expressions
 - **[Chapter 20](Chapter-20/)** - Working with .NET and COM
-- **[Chapter 25](Chapter-25/)** - [Chapter Title]
+- **[Chapter 25](Chapter-25/)** - Building Complete Solutions
 
 Each chapter folder contains its own README with detailed instructions.
 
@@ -125,9 +125,8 @@ This code is provided for educational purposes. You may use and modify these scr
 
 ## 📫 Contact
 
-- **Author**: [Your Name]
-- **Email**: [your.email@example.com]
-- **Website**: [yourwebsite.com]
+- **Author**: Zephyr Nash
+- **Email**: digitalcodexlab@gmail.com
 
 ## 🙏 Acknowledgments
 
@@ -137,7 +136,7 @@ Thank you to all readers who have provided feedback and contributed improvements
 
 **Last Updated**: October 2025  
 **Book Version**: 1.0  
-**Repository**: Code examples from "PowerShell for System Administrators"
+**Repository**: Code examples from "PowerShell Automation Made Simple for System Administrators"
 
 ---
 
