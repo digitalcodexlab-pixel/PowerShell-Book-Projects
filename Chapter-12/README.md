@@ -2,7 +2,7 @@
 you'll build a comprehensive service health monitoring script that checks critical services, validates dependencies, monitors resources, and generates detailed reports—production-ready automation for system monitoring.
 
 ## Using the script:
-```
+```PowerShell
 # Run with defaults
 .\ServiceHealthCheck.ps1
 
