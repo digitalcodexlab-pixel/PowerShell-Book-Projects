@@ -4,13 +4,13 @@ You'll build a complete employee onboarding system demonstrating professional au
 
 ## Using the onboarding script:
 ### Basic onboarding
-.\New-EmployeeOnboarding.ps1 -FirstName "Sarah" -LastName "Connor" -Department "Engineering" -Title "Software Engineer"
+  .\New-EmployeeOnboarding.ps1 -FirstName "Sarah" -LastName "Connor" -Department "Engineering" -Title "Software Engineer"
 
 ### With manager assignment
-.\New-EmployeeOnboarding.ps1 -FirstName "John" -LastName "Connor" -Department "IT" -Title "Systems Administrator" -Manager "skyle"
+  .\New-EmployeeOnboarding.ps1 -FirstName "John" -LastName "Connor" -Department "IT" -Title "Systems Administrator" -Manager "skyle"
 
 ### Capture output for additional automation
-$result = .\New-EmployeeOnboarding.ps1 -FirstName "Kyle" -LastName "Reese" -Department "Sales" -Title "Account Executive"
+  $result = .\New-EmployeeOnboarding.ps1 -FirstName "Kyle" -LastName "Reese" -Department "Sales" -Title "Account Executive"
 
 ***Could trigger email notifications, ticketing system updates, etc.***
 
