@@ -40,8 +40,8 @@ Each chapter folder contains its own README with detailed instructions.
 
 **Option 2: Clone with Git**
 ```powershell
-git clone https://github.com/YourUsername/powershell-book-projects.git
-cd powershell-book-projects
+git clone https://github.com/digitalcodexlab-pixel/PowerShell-Book-Projects.git
+cd PowerShell-Book-Projects
 ```
 
 ### Run a Script
