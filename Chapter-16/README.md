@@ -1,5 +1,5 @@
 # Practical Project: Multi-Server Configuration Script
-Let's build a comprehensive multi-server configuration system that demonstrates production remoting automation. This script configures multiple servers simultaneously, verifies configurations, handles errors gracefully, and generates detailed reports—real enterprise infrastructure management.
+You'll build a comprehensive multi-server configuration system that demonstrates production remoting automation. This script configures multiple servers simultaneously, verifies configurations, handles errors gracefully, and generates detailed reports—real enterprise infrastructure management.
 
 
 
