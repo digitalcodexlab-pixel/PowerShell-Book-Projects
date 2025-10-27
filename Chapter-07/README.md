@@ -1,5 +1,5 @@
 # Practical Project: Automated Log File Management
-We'll build a complete log file management system that archives old logs, compresses them, cleans up space, and reports on actions taken—real-world automation you'd deploy in production environments.
+You'll build a complete log file management system that archives old logs, compresses them, cleans up space, and reports on actions taken—real-world automation you'd deploy in production environments.
 
 
 ## Using the script:
