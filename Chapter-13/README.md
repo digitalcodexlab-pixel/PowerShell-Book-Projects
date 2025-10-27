@@ -1,21 +1,17 @@
-# Practical Project: System Hardening Script
-This project provides a comprehensive PowerShell script designed to automate the security hardening of Windows systems. The script configures a wide range of security settings, disables unnecessary or insecure features, and helps enforce organizational security policies.
+# Practical Project: New Employee Onboarding Script
+You'll build a complete employee onboarding system demonstrating professional automation. This script orchestrates user creation, group assignments, home directory setup, and documentation generation—real production automation.
 
-It is designed to be "production-ready," meaning it includes features like logging, report generation, and a "report-only" mode that allows administrators to check system compliance without making any changes. This makes it a powerful tool for ensuring a consistent and secure baseline across multiple Windows machines.
 
-# Using the hardening script:
+## Using the onboarding script:
+### Basic onboarding
+.\New-EmployeeOnboarding.ps1 -FirstName "Sarah" -LastName "Connor" -Department "Engineering" -Title "Software Engineer"
 
-## Report mode - check settings without making changes
-.\SystemHardening.ps1 -ReportOnly
+### With manager assignment
+.\New-EmployeeOnboarding.ps1 -FirstName "John" -LastName "Connor" -Department "IT" -Title "Systems Administrator" -Manager "skyle"
 
-## Apply hardening with all defaults
-.\SystemHardening.ps1
+### Capture output for additional automation
+$result = .\New-EmployeeOnboarding.ps1 -FirstName "Kyle" -LastName "Reese" -Department "Sales" -Title "Account Executive"
 
-## Skip Windows Update configuration
-.\SystemHardening.ps1 -SkipWindowsUpdate
+***Could trigger email notifications, ticketing system updates, etc.***
 
-## Skip firewall verification
-.\SystemHardening.ps1 -SkipFirewall
-
-This system hardening script demonstrates production-ready security automation: comprehensive registry modifications, service management, feature control, configurable options via parameters, report-only mode for validation, detailed logging and HTML reporting, and modular design allowing selective application. It transforms hours of manual security configuration into a repeatable, auditable, two-minute operation that ensures consistent security posture across your environment.
-
+This onboarding automation demonstrates professional script development: parameterized configuration separating environment from logic, department-specific rules driving group assignments and quotas, comprehensive error handling at each step, detailed audit logging, security-conscious password handling, and structured output enabling integration with other systems. It transforms a multi-hour manual process into a consistent, auditable, two-minute operation.
