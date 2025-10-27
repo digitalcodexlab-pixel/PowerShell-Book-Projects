@@ -1,20 +1,21 @@
-# Practical Project: Advanced Email Notification System
-Let's build a comprehensive email notification system that monitors system health, generates HTML reports, handles multiple notification types, includes attachments, manages templates, and provides robust error handling—demonstrating production-ready .NET integration for operational automation.
+# Practical Project: Log Analysis and Reporting Script
+You'll build a comprehensive log analysis and reporting system that parses various log formats, extracts critical information using regex, identifies patterns and anomalies, and generates detailed reports—demonstrating production-ready log processing automation.
 
-# Using the email notification system:
-## Basic health report
-.\EmailNotification.ps1 -Recipients "admin@company.com" -SmtpServer "smtp.gmail.com" -SmtpPort 587
 
-## Alert with system report attachment
-.\EmailNotification.ps1 -NotificationType Alert -Recipients "admin@company.com","manager@company.com" -SmtpServer "smtp.company.com" -IncludeSystemReport
+## Using the log analysis tool:
+```powershell
 
-## Custom thresholds
-.\EmailNotification.ps1 -Recipients "ops@company.com" -SmtpServer "smtp.company.com" -Threshold @{CPUPercent=90; MemoryPercent=90; DiskPercent=95}
+# Analyze application log
+.\LogAnalysis.ps1 -LogPath "C:\Logs\application.log" -LogType Application -IncludeStatistics
 
-# Using saved credentials
-**First, save credentials:**
+# Analyze IIS logs with date filter
+.\LogAnalysis.ps1 -LogPath "C:\inetpub\logs\LogFiles\u_ex241006.log" -LogType IIS -StartDate "2024-10-06"
 
-## Get-Credential | Export-Clixml -Path "C:\Secure\smtp-creds.xml"
-.\EmailNotification.ps1 -Recipients "team@company.com" -SmtpServer "smtp.company.com" -CredentialPath "C:\Secure\smtp-creds.xml"
+# Security log analysis
+.\LogAnalysis.ps1 -LogPath "C:\Logs\security.log" -LogType Security -OutputPath "D:\Reports"
 
-This production-ready notification system demonstrates comprehensive .NET integration: System.Net.Mail classes for robust email delivery, System.IO for efficient file operations and logging, HTML email generation with dynamic styling based on system status, health monitoring combining CIM queries with .NET processing, attachment handling for detailed reports, secure credential management with encrypted storage, comprehensive error handling and logging, template-based email formatting, threshold-based alerting, and modular design enabling reuse. It combines system monitoring, data collection, report generation, and email delivery into unified operational automation—real infrastructure notification solving monitoring and alerting challenges.
+# Custom log format
+.\LogAnalysis.ps1 -LogPath "C:\Logs\custom.log" -LogType Custom
+
+```
+This production-ready log analysis system demonstrates comprehensive regex usage: pattern-based log parsing for multiple formats, structured data extraction using capturing groups, error pattern detection and classification, security event identification and anomaly detection, statistical analysis of log patterns, multi-format output (HTML, JSON, CSV), and reusable pattern library for common data types. It transforms thousands of unstructured log lines into actionable intelligence—real operational insight for troubleshooting, security monitoring, and performance analysis.
