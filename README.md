@@ -32,9 +32,10 @@ Each chapter folder contains its own README with detailed instructions.
 ## 🚀 Quick Start
 
 ### Download All Code
-<img width="843" height="585" alt="image" src="https://github.com/user-attachments/assets/49b98f9c-2055-4504-a6e2-0bb2249df37b" />
 
 **Option 1: Download ZIP**
+<img width="843" height="585" alt="image" src="https://github.com/user-attachments/assets/49b98f9c-2055-4504-a6e2-0bb2249df37b" />
+
 1. Click the green **"Code"** button above
 2. Select **"Download ZIP"**
 3. Extract to your preferred location
