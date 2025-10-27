@@ -1,15 +1,13 @@
-# Practical Project: New Employee Onboarding Script
-Let's build a complete employee onboarding system demonstrating professional automation. This script orchestrates user creation, group assignments, home directory setup, and documentation generation—real production automation.
+# Practical Project: Service Health Check Script
+you'll build a comprehensive service health monitoring script that checks critical services, validates dependencies, monitors resources, and generates detailed reports—production-ready automation for system monitoring.
+
+# Using the script:
+ *Run with defaults*--->  .\ServiceHealthCheck.ps1
 
 
-Using the onboarding script:
-# Basic onboarding
-.\New-EmployeeOnboarding.ps1 -FirstName "Sarah" -LastName "Connor" -Department "Engineering" -Title "Software Engineer"
+*Monitor custom services*--->  .\ServiceHealthCheck.ps1 -CriticalServices @("IIS", "MSSQLSERVER", "W3SVC")
 
-# With manager assignment
-.\New-EmployeeOnboarding.ps1 -FirstName "John" -LastName "Connor" -Department "IT" -Title "Systems Administrator" -Manager "skyle"
 
-# Capture output for additional automation
-$result = .\New-EmployeeOnboarding.ps1 -FirstName "Kyle" -LastName "Reese" -Department "Sales" -Title "Account Executive"
-# Could trigger email notifications, ticketing system updates, etc.
-This onboarding automation demonstrates professional script development: parameterized configuration separating environment from logic, department-specific rules driving group assignments and quotas, comprehensive error handling at each step, detailed audit logging, security-conscious password handling, and structured output enabling integration with other systems. It transforms a multi-hour manual process into a consistent, auditable, two-minute operation.
+*Schedule to run hourly via Task Scheduler*
+
+This production-ready script demonstrates comprehensive system monitoring: service status checking, dependency validation, resource monitoring, alerting, HTML report generation, and detailed logging. Deploy this on servers to catch issues before they impact users—real professional monitoring automation.
