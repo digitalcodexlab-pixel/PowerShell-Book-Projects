@@ -1,19 +1,22 @@
-# Practical Project: System Health Monitoring Dashboard
-Let's build a comprehensive system health monitoring dashboard that continuously monitors event logs, system resources, services, and generates visual reports—production-ready monitoring automation combining all concepts from this chapter.
+# Practical Project: Multi-Server Configuration Script
+Let's build a comprehensive multi-server configuration system that demonstrates production remoting automation. This script configures multiple servers simultaneously, verifies configurations, handles errors gracefully, and generates detailed reports—real enterprise infrastructure management.
 
 
-# Using the health monitoring dashboard:
 
-## Single health check
-.\HealthMonitor.ps1 -ComputerName "SERVER01"
+## Using the multi-server configuration script:
+```
 
-## Monitor multiple servers
-.\HealthMonitor.ps1 -ComputerName "SERVER01","SERVER02","WEB01","WEB02"
+# Report mode - check configurations without changes
+.\MultiServerConfig.ps1 -ComputerName "SERVER01","SERVER02","SERVER03" -ReportOnly
 
-## Continuous monitoring with 5-minute intervals
-.\HealthMonitor.ps1 -ComputerName "SERVER01","SERVER02" -ContinuousMode -CheckIntervalMinutes 5
+# Configure all settings on servers
+.\MultiServerConfig.ps1 -ComputerName "SERVER01","SERVER02","SERVER03" -ConfigurationType All
 
-## Monitor with custom output path
-.\HealthMonitor.ps1 -ComputerName "SERVER01" -OutputPath "D:\Monitoring"
+# Configure only services
+.\MultiServerConfig.ps1 -ComputerName "WEB01","WEB02","WEB03" -ConfigurationType Services
 
-This production-ready monitoring dashboard demonstrates comprehensive system health automation: multi-system monitoring with CIM queries for hardware metrics, event log analysis for critical errors and service failures, disk space and resource threshold alerting, visual HTML dashboard with color-coded status indicators, continuous monitoring mode for real-time health tracking, detailed logging of all checks and alerts, and modular design enabling easy threshold and metric customization. It combines event logs, WMI/CIM, service monitoring, and resource tracking into unified infrastructure health visibility—real operational intelligence for proactive system management.
+# Configure security settings only
+.\MultiServerConfig.ps1 -ComputerName "WORKSTATION01","WORKSTATION02" -ConfigurationType Security
+
+```
+This production-ready script demonstrates enterprise remoting automation: parallel execution across multiple servers, connectivity validation before attempting operations, modular configuration types enabling selective application, report-only mode for validation without changes, comprehensive error handling and logging, detailed HTML reporting with status tracking, system information collection for inventory, and graceful handling of offline servers. It transforms hours of manual server configuration into minutes of automated, consistent deployment—real infrastructure-as-code managing servers at scale.
