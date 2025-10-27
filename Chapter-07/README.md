@@ -1,6 +1,8 @@
 # Practical Project: Automated Log File Management
 You'll build a complete log file management system that archives old logs, compresses them, cleans up space, and reports on actions taken—real-world automation you'd deploy in production environments.
 
+**The scenario:** HR provides a CSV file of employees. You need to validate the data, identify issues, generate username proposals, and create reports showing valid records, invalid records, and department summaries.
+
 
 ## Using the script:
 
