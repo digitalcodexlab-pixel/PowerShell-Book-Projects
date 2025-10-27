@@ -3,13 +3,13 @@ We'll build a complete log file management system that archives old logs, compre
 
 
 ## Using the script:
- **Run with defaults*--->  .\ManageLogs.ps1
+ *Run with defaults*--->  .\ManageLogs.ps1
 
 
-**Custom settings*--->  .\ManageLogs.ps1 -LogPath "C:\AppLogs" -DaysToKeepActive 14 -MaxArchiveSizeGB 50
+*Custom settings*--->  .\ManageLogs.ps1 -LogPath "C:\AppLogs" -DaysToKeepActive 14 -MaxArchiveSizeGB 50
 
 
-**Schedule with Task Scheduler to run nightly*
+*Schedule with Task Scheduler to run nightly*
 
 **What this script demonstrates:**
 
